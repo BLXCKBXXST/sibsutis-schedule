@@ -225,6 +225,8 @@ install -m 755 sibsutis-schedule-bot ~/.local/bin/
 
 ### Запуск как user-сервис
 
+Локально вручную:
+
 ```bash
 mkdir -p ~/.config/systemd/user
 cp systemd/sibsutis-schedule-bot.service ~/.config/systemd/user/
@@ -232,6 +234,15 @@ systemctl --user daemon-reload
 systemctl --user enable --now sibsutis-schedule-bot.service
 journalctl --user -u sibsutis-schedule-bot.service -f
 ```
+
+На удалённый сервер — есть готовый деплой-скрипт в [deploy/](deploy/):
+
+```bash
+cd deploy
+./deploy.sh --host my-server     # кросс-сборка + scp + systemd-user + linger
+```
+
+См. [deploy/README.md](deploy/README.md).
 
 ### Команды бота
 
