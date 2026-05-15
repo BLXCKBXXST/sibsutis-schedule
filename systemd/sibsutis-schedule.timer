@@ -1,0 +1,13 @@
+[Unit]
+Description=Периодическое обновление кэша расписания (sibsutis-schedule)
+
+[Timer]
+# Через 5 минут после загрузки и далее каждые 3 часа.
+OnBootSec=5min
+OnUnitActiveSec=3h
+# Persistent=true — если машина была выключена, пропущенный запуск выполнится
+# при следующем старте: кэш не «протухает», даже если сайт лежал.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

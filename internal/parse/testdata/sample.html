@@ -1,0 +1,23 @@
+<!--
+  Обезличенная фикстура для тестов парсера.
+
+  Повторяет реальную структуру страницы расписания my.sibsutis.ru: данные
+  встроены в страницу как JS-переменные days[1..14] (JSON-строки в одинарных
+  кавычках), days[1..7] — неделя «числитель», days[8..14] — «знаменатель».
+  Времена слотов настоящие, дисциплины и ФИО преподавателей выдуманы.
+-->
+<!DOCTYPE html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>Расписание</title></head>
+<body>
+  <div class="schedule container my-2"><div class="schedule__item"></div></div>
+  <script>
+    var days = []
+    var fact_schedule_days = []
+    days[1] = '{"Date":"0001-01-01","DayOfWeek":null,"ScheduleCell":[{"DateBegin":"0001-01-01T08:00:00","DateEnd":"0001-01-01T09:35:00","Subgroup":[]},{"DateBegin":"0001-01-01T09:50:00","DateEnd":"0001-01-01T11:25:00","Subgroup":[{"DATE_BEGIN":"0001-01-01 09:50:00","DISCIPLINE":"Базы данных","TYPE_LESSON":"Лекционные занятия","TEACHER":["Преподаватель А.А."],"CLASSROOM":"а.210 (К.1)","GROUP":["ТЕСТ-11"],"SUBGROUP":null,"WEEK_DAY":"Понедельник"}]}]}'
+    days[2] = '{"Date":"0001-01-02","DayOfWeek":null,"ScheduleCell":[{"DateBegin":"0001-01-02T11:40:00","DateEnd":"0001-01-02T13:15:00","Subgroup":[{"DATE_BEGIN":"0001-01-02 11:40:00","DISCIPLINE":"Программирование","TYPE_LESSON":"Лабораторные занятия","TEACHER":"Преподаватель Б.Б.","CLASSROOM":"а.312 (К.2)","GROUP":["ТЕСТ-11"],"SUBGROUP":"1 подгруппа","WEEK_DAY":"Вторник"}]}]}'
+    fact_schedule_days[1] = 'null'
+    days[8] = '{"Date":"0001-01-08","DayOfWeek":null,"ScheduleCell":[{"DateBegin":"0001-01-08T08:00:00","DateEnd":"0001-01-08T09:35:00","Subgroup":[{"DATE_BEGIN":"0001-01-08 08:00:00","DISCIPLINE":"Физика","TYPE_LESSON":"Практические занятия","TEACHER":["Преподаватель В.В.","Преподаватель Г.Г."],"CLASSROOM":"а.101","GROUP":["ТЕСТ-11"],"SUBGROUP":null,"WEEK_DAY":"Понедельник"}]}]}'
+  </script>
+</body>
+</html>

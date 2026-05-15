@@ -1,0 +1,223 @@
+// Package config загружает настройки парсера из простого key=value файла.
+//
+// Формат файла (config.txt):
+//
+//	login=ваш_логин
+//	password=ваш_пароль
+//	# target по умолчанию — ровно один из group/teacher/room (можно не задавать,
+//	# тогда target указывается флагом --group/--teacher/--room):
+//	group=ИБ-211
+//	# опционально:
+//	# schedule_url=https://my.sibsutis.ru/students/schedule/
+//
+// Реальный config.txt не попадает в репозиторий (см. .gitignore); в репозитории
+// лежит config.example.txt. Пользователь сам сохраняет логин и пароль в файл —
+// учётные данные нигде не передаются, кроме этого локального файла.
+package config
+
+import (
+	"bufio"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/BLXCKBXXST/sibsutis-schedule/internal/model"
+)
+
+// Значения по умолчанию.
+const (
+	DefaultScheduleURL       = "https://my.sibsutis.ru/students/schedule/"
+	DefaultAuthURL           = "https://my.sibsutis.ru/auth/"
+	DefaultTelegramFreshness = 15 * time.Minute
+)
+
+// Config — разобранные настройки.
+type Config struct {
+	Login             string
+	Password          string
+	ScheduleURL       string        // базовый URL страницы расписания
+	AuthURL           string        // страница авторизации Bitrix
+	DefaultTarget     *model.Target // target по умолчанию из config.txt; nil — не задан
+	TelegramToken     string        // токен Telegram-бота (нужен только для бота)
+	TelegramFreshness time.Duration // как долго версия в кэше считается свежей для бота
+	CycleAnchor       time.Time     // понедельник любой недели «числителя» — для /today
+	Path              string        // откуда загружен конфиг (для сообщений)
+}
+
+// Load ищет и читает конфиг. Если explicitPath не пуст — используется только он.
+// Иначе проверяются ./config.txt и ~/.config/sibsutis-schedule/config.txt.
+func Load(explicitPath string) (*Config, error) {
+	path, err := resolvePath(explicitPath)
+	if err != nil {
+		return nil, err
+	}
+
+	warnIfWorldReadable(path)
+
+	values, err := parseFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg := &Config{
+		Login:         values["login"],
+		Password:      values["password"],
+		ScheduleURL:   values["schedule_url"],
+		AuthURL:       values["auth_url"],
+		TelegramToken: values["telegram_token"],
+		Path:          path,
+	}
+	if cfg.ScheduleURL == "" {
+		cfg.ScheduleURL = DefaultScheduleURL
+	}
+	if cfg.AuthURL == "" {
+		cfg.AuthURL = DefaultAuthURL
+	}
+
+	if cfg.Login == "" || cfg.Password == "" {
+		return nil, fmt.Errorf("в %s не заданы login и/или password", path)
+	}
+
+	target, err := parseTarget(values)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	cfg.DefaultTarget = target
+
+	if cfg.TelegramFreshness, err = parseFreshness(values["telegram_freshness_minutes"]); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+
+	if cfg.CycleAnchor, err = parseAnchor(values["cycle_anchor"]); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+
+	return cfg, nil
+}
+
+// parseFreshness разбирает значение telegram_freshness_minutes (целое число
+// минут). Пусто/0 → DefaultTelegramFreshness.
+func parseFreshness(s string) (time.Duration, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return DefaultTelegramFreshness, nil
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil || n < 0 {
+		return 0, fmt.Errorf("telegram_freshness_minutes должно быть неотрицательным целым, получено %q", s)
+	}
+	if n == 0 {
+		return DefaultTelegramFreshness, nil
+	}
+	return time.Duration(n) * time.Minute, nil
+}
+
+// parseAnchor разбирает cycle_anchor вида YYYY-MM-DD — дату понедельника
+// недели-числителя. Пусто → нулевое время (фича отключена).
+func parseAnchor(s string) (time.Time, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return time.Time{}, nil
+	}
+	t, err := time.ParseInLocation("2006-01-02", s, time.Local)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("cycle_anchor должно быть в формате YYYY-MM-DD, получено %q", s)
+	}
+	return t, nil
+}
+
+// parseTarget извлекает target по умолчанию из ключей group/teacher/room.
+// Допустим ровно один из них; если не задан ни один — target отсутствует (nil).
+func parseTarget(values map[string]string) (*model.Target, error) {
+	candidates := []struct {
+		key string
+		typ model.TargetType
+	}{
+		{"group", model.TypeStudent},
+		{"teacher", model.TypeTeacher},
+		{"room", model.TypeRoom},
+	}
+
+	var found *model.Target
+	for _, c := range candidates {
+		v := strings.TrimSpace(values[c.key])
+		if v == "" {
+			continue
+		}
+		if found != nil {
+			return nil, fmt.Errorf("задайте только один из group/teacher/room, а не несколько")
+		}
+		found = &model.Target{Type: c.typ, Query: v}
+	}
+	return found, nil
+}
+
+// resolvePath возвращает путь к существующему конфигу либо ошибку со списком
+// проверенных мест.
+func resolvePath(explicitPath string) (string, error) {
+	if explicitPath != "" {
+		if _, err := os.Stat(explicitPath); err != nil {
+			return "", fmt.Errorf("конфиг не найден: %s", explicitPath)
+		}
+		return explicitPath, nil
+	}
+
+	candidates := []string{"config.txt"}
+	if home, err := os.UserHomeDir(); err == nil {
+		candidates = append(candidates,
+			filepath.Join(home, ".config", "sibsutis-schedule", "config.txt"))
+	}
+	for _, c := range candidates {
+		if _, err := os.Stat(c); err == nil {
+			return c, nil
+		}
+	}
+	return "", fmt.Errorf("конфиг не найден. Создай config.txt по образцу config.example.txt "+
+		"(проверены: %s)", strings.Join(candidates, ", "))
+}
+
+// parseFile читает key=value строки, игнорируя пустые строки и комментарии (#).
+func parseFile(path string) (map[string]string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("не удалось открыть конфиг: %w", err)
+	}
+	defer f.Close()
+
+	values := make(map[string]string)
+	sc := bufio.NewScanner(f)
+	line := 0
+	for sc.Scan() {
+		line++
+		raw := strings.TrimSpace(sc.Text())
+		if raw == "" || strings.HasPrefix(raw, "#") {
+			continue
+		}
+		key, val, ok := strings.Cut(raw, "=")
+		if !ok {
+			return nil, fmt.Errorf("%s:%d: ожидался формат key=value", path, line)
+		}
+		values[strings.ToLower(strings.TrimSpace(key))] = strings.TrimSpace(val)
+	}
+	if err := sc.Err(); err != nil {
+		return nil, fmt.Errorf("ошибка чтения конфига: %w", err)
+	}
+	return values, nil
+}
+
+// warnIfWorldReadable печатает предупреждение в stderr, если файл с паролем
+// доступен на чтение группе или остальным.
+func warnIfWorldReadable(path string) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return
+	}
+	if info.Mode().Perm()&0o077 != 0 {
+		fmt.Fprintf(os.Stderr,
+			"предупреждение: %s доступен на чтение другим пользователям; "+
+				"рекомендуется chmod 600 %s\n", path, path)
+	}
+}

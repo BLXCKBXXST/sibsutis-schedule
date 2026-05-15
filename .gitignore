@@ -1,0 +1,14 @@
+# Binaries (только корневые — не цеплять unit-файлы и cmd/bot/)
+/sibsutis-schedule
+/sibsutis-schedule-bot
+*.exe
+dist/
+
+# Учётные данные и локальная история — не для репозитория
+config.txt
+data/
+
+# IDE
+.idea/
+.vscode/
+*.swp

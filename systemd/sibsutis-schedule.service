@@ -1,0 +1,10 @@
+[Unit]
+Description=Обновление кэша расписания (sibsutis-schedule)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Укажи реальные пути к бинарнику и config.txt.
+# %h раскрывается в домашний каталог пользователя.
+ExecStart=%h/.local/bin/sibsutis-schedule update --quiet --config %h/.config/sibsutis-schedule/config.txt

@@ -1,0 +1,29 @@
+# Конфиг sibsutis-schedule.
+#
+# Скопируй этот файл в config.txt и впиши свои данные:
+#     cp config.example.txt config.txt
+#     chmod 600 config.txt
+#
+# config.txt в репозиторий не попадает (см. .gitignore) — учётные данные
+# остаются только на твоей машине.
+#
+# Формат: key=value, по одной паре на строку. Строки с # — комментарии.
+
+login=ваш_логин_от_my.sibsutis.ru
+password=ваш_пароль
+
+# Target по умолчанию — какое расписание тянуть без флагов и обновлять по таймеру.
+# Задай РОВНО ОДИН из трёх ключей (или ни одного — тогда target указывается
+# флагом --group / --teacher / --room при каждом запуске).
+group=ИБ-211
+# teacher=Иванов И.И.
+# room=1-101
+
+# --- Telegram-бот (нужен только если запускаешь sibsutis-schedule-bot) ---
+# telegram_token=123456:AA... (получи у @BotFather)
+# telegram_freshness_minutes=15        # сколько минут считать кэш свежим
+# cycle_anchor=2025-09-01               # понедельник любой недели «числителя» для /today
+
+# Необязательно — переопределить адреса (по умолчанию значения ниже):
+# schedule_url=https://my.sibsutis.ru/students/schedule/
+# auth_url=https://my.sibsutis.ru/auth/
