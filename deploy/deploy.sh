@@ -1,8 +1,8 @@
 #!/bin/bash
 # =============================================================
-#  sibsutis-schedule-bot — deploy на сервер
+#  sibsutis-schedule-web — deploy на сервер
 #
-#  Кросс-компилирует бот, заливает бинарник + systemd-юнит на сервер
+#  Кросс-компилирует web-сервер, заливает бинарник + systemd-юнит на сервер
 #  по SSH и поднимает user-level systemd с linger.
 #
 #  Использование:
@@ -13,8 +13,8 @@
 #  Параметры командной строки перекрывают deploy.conf:
 #    --host <ssh-alias>      алиас сервера из ~/.ssh/config
 #    --arch amd64|arm64      архитектура сервера (default: amd64)
-#    --source <path>         где лежит проект sibsutis-schedule
-#                            (default: $HOME/my-projects/github-repos/sibsutis-schedule)
+#    --source <path>         путь к проекту sibsutis-schedule
+#                            (default: родитель каталога этого скрипта)
 #
 #  Другие режимы:
 #    --dry-run               перечислить шаги, ничего не делать
@@ -38,7 +38,7 @@ error()   { echo -e "${RED}[ ERR]${RESET}  $1" >&2; exit 1; }
 
 print_help() {
     cat <<'HELP'
-sibsutis-schedule-bot — deploy на сервер
+sibsutis-schedule-web — deploy на сервер
 
 Использование:
   ./deploy.sh [--host <ssh-alias>] [--arch amd64|arm64] [--source <path>]
@@ -56,7 +56,6 @@ sibsutis-schedule-bot — deploy на сервер
   -h, --help           эта справка
 
 Конфиг deploy.conf рядом со скриптом перекрывается флагами CLI.
-
 Подробности и примеры — в ./README.md.
 HELP
 }
@@ -73,10 +72,10 @@ DRY_RUN=false
 NO_RESTART=false
 UNINSTALL=false
 
-# Имена ресурсов на сервере — должны совпадать с systemd/sibsutis-schedule-bot.service.
-BIN_NAME="sibsutis-schedule-bot"
-UNIT_NAME="sibsutis-schedule-bot.service"
+BIN_NAME="sibsutis-schedule-web"
+UNIT_NAME="sibsutis-schedule-web.service"
 
+# ─── Загрузка deploy.conf ─────────────────────────────────────
 if [[ -f "$CONF_FILE" ]]; then
     info "Загружаю конфиг: $CONF_FILE"
     # shellcheck source=/dev/null
@@ -93,10 +92,7 @@ while [[ $# -gt 0 ]]; do
         --dry-run)     DRY_RUN=true;  shift ;;
         --no-restart)  NO_RESTART=true; shift ;;
         --uninstall)   UNINSTALL=true; shift ;;
-        -h|--help)
-            print_help
-            exit 0
-            ;;
+        -h|--help)     print_help; exit 0 ;;
         *) error "Неизвестный аргумент: $1 (см. --help)" ;;
     esac
 done
@@ -108,8 +104,6 @@ case "$ARCH" in
     *) error "поддерживаются только amd64 / arm64; получено '$ARCH'" ;;
 esac
 
-# Helper: выполнить локально или просто напечатать в dry-run.
-# Принимает одну командную строку (внутри неё может быть pipeline / && / etc).
 run_local() {
     local cmd="$1"
     if $DRY_RUN; then
@@ -119,8 +113,6 @@ run_local() {
     fi
 }
 
-# Helper: выполнить блок на сервере (heredoc через ssh).
-# Использование: ssh_run <<'REMOTE' ... REMOTE
 ssh_run() {
     if $DRY_RUN; then
         echo -e "${DIM}    \$ ssh ${SSH_HOST} bash -s <<REMOTE${RESET}"
@@ -138,9 +130,9 @@ if $UNINSTALL; then
     info "Uninstall: останавливаю и удаляю юнит на ${BOLD}${SSH_HOST}${RESET}"
     ssh_run <<'REMOTE'
         set -e
-        systemctl --user disable --now sibsutis-schedule-bot.service 2>/dev/null || true
-        rm -f "$HOME/.config/systemd/user/sibsutis-schedule-bot.service"
-        rm -f "$HOME/.local/bin/sibsutis-schedule-bot"
+        systemctl --user disable --now sibsutis-schedule-web.service 2>/dev/null || true
+        rm -f "$HOME/.config/systemd/user/sibsutis-schedule-web.service"
+        rm -f "$HOME/.local/bin/sibsutis-schedule-web"
         systemctl --user daemon-reload 2>/dev/null || true
         echo "uninstall: бинарник и юнит удалены"
         echo "  config.txt и каталог истории на месте — удали вручную, если нужно:"
@@ -159,9 +151,9 @@ command -v go      >/dev/null 2>&1 || error "не найден 'go' — нуже
 command -v ssh     >/dev/null 2>&1 || error "не найден 'ssh'"
 command -v scp     >/dev/null 2>&1 || error "не найден 'scp'"
 [[ -d "$BOT_SRC" ]] || error "проект не найден: $BOT_SRC (укажи --source)"
-[[ -f "$BOT_SRC/cmd/bot/main.go" ]] || error "это не похоже на sibsutis-schedule: нет cmd/bot/main.go в $BOT_SRC"
+[[ -f "$BOT_SRC/cmd/web/main.go" ]] || error "это не похоже на sibsutis-schedule: нет cmd/web/main.go в $BOT_SRC"
 
-UNIT_SRC="$BOT_SRC/systemd/sibsutis-schedule-bot.service"
+UNIT_SRC="$BOT_SRC/systemd/sibsutis-schedule-web.service"
 [[ -f "$UNIT_SRC" ]] || error "не найден unit-файл: $UNIT_SRC"
 
 success "ok: go, ssh, scp; источник: $BOT_SRC"
@@ -171,7 +163,7 @@ success "ok: go, ssh, scp; источник: $BOT_SRC"
 # ============================================================
 info "Фаза 2/6: сборка под linux/${ARCH}"
 BIN_OUT="$BOT_SRC/dist/${BIN_NAME}-linux-${ARCH}"
-run_local "cd '$BOT_SRC' && mkdir -p dist && GOOS=linux GOARCH=${ARCH} CGO_ENABLED=0 go build -ldflags='-s -w' -o '$BIN_OUT' ./cmd/bot"
+run_local "cd '$BOT_SRC' && mkdir -p dist && GOOS=linux GOARCH=${ARCH} CGO_ENABLED=0 go build -ldflags='-s -w' -o '$BIN_OUT' ./cmd/web"
 if ! $DRY_RUN; then
     [[ -x "$BIN_OUT" ]] || error "бинарник не появился: $BIN_OUT"
     SIZE=$(du -h "$BIN_OUT" | cut -f1)
@@ -186,13 +178,11 @@ if $DRY_RUN; then
     echo -e "${DIM}    \$ ssh ${SSH_HOST} 'whoami; uname -m'${RESET}"
 else
     if ! REMOTE_INFO=$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$SSH_HOST" 'echo "user=$(whoami); arch=$(uname -m); home=$HOME"' 2>&1); then
-        # вернёмся к обычному ssh — возможно, требуется passphrase
         warn "BatchMode не прошёл — пробую интерактивно (введи passphrase, если попросит)"
         REMOTE_INFO=$(ssh -o ConnectTimeout=15 "$SSH_HOST" 'echo "user=$(whoami); arch=$(uname -m); home=$HOME"') || \
             error "ssh до '$SSH_HOST' не работает (см. ~/.ssh/config и ssh-agent)"
     fi
     echo "    $REMOTE_INFO"
-    # Грубо сверим архитектуру.
     REMOTE_ARCH=$(echo "$REMOTE_INFO" | sed -n 's/.*arch=\([^;]*\).*/\1/p')
     case "$REMOTE_ARCH" in
         x86_64) EXPECTED=amd64 ;;
@@ -200,7 +190,7 @@ else
         *) warn "неизвестная архитектура сервера '$REMOTE_ARCH' — продолжаю на свой страх"; EXPECTED="$ARCH" ;;
     esac
     if [[ "$EXPECTED" != "$ARCH" ]]; then
-        warn "архитектура сервера '$REMOTE_ARCH' не совпадает с --arch '$ARCH' (ожидалось $EXPECTED). Бот может не запуститься."
+        warn "архитектура сервера '$REMOTE_ARCH' не совпадает с --arch '$ARCH' (ожидалось $EXPECTED). Бинарник может не запуститься."
     fi
     success "сервер доступен"
 fi
@@ -219,10 +209,10 @@ else
 fi
 
 # ============================================================
-#  Фаза 5: установка на сервере (один ssh-блок)
+#  Фаза 5: установка на сервере
 # ============================================================
 info "Фаза 5/6: установка на сервере (бинарник, юнит, linger)"
-NEED_CONFIG_FLAG_FILE="/tmp/.sibsutis-bot-deploy.need-config"
+NEED_CONFIG_FLAG_FILE="/tmp/.sibsutis-web-deploy.need-config"
 ssh_run <<REMOTE
     set -e
     BIN_NEW=/tmp/${BIN_NAME}.new
@@ -235,7 +225,6 @@ ssh_run <<REMOTE
     install -m 644 "\$UNIT_NEW" "\$HOME/.config/systemd/user/${UNIT_NAME}"
     rm -f "\$BIN_NEW" "\$UNIT_NEW"
 
-    # Пустой config.txt при первой установке — пользователь сам впишет секреты.
     if [ ! -f "\$HOME/.config/sibsutis-schedule/config.txt" ]; then
         touch "\$HOME/.config/sibsutis-schedule/config.txt"
         chmod 600 "\$HOME/.config/sibsutis-schedule/config.txt"
@@ -244,7 +233,6 @@ ssh_run <<REMOTE
         rm -f "\$NEED_CONFIG_FLAG"
     fi
 
-    # Linger — чтобы юнит выживал logout.
     if ! loginctl show-user "\$(whoami)" 2>/dev/null | grep -q '^Linger=yes'; then
         echo "linger не включён — включаю"
         if ! loginctl enable-linger "\$(whoami)" 2>/dev/null; then
@@ -262,11 +250,8 @@ ssh_run <<REMOTE
 REMOTE
 success "сервер настроен"
 
-# Проверяем, был ли создан пустой config.txt.
 NEED_CONFIG=false
 if ! $DRY_RUN; then
-    # NEED_CONFIG_FLAG_FILE — путь, который мы сами задали выше; намеренно
-    # подставляем его на клиенте, чтобы команда на сервере была проще.
     # shellcheck disable=SC2029
     if ssh "$SSH_HOST" "test -f $NEED_CONFIG_FLAG_FILE && rm -f $NEED_CONFIG_FLAG_FILE && echo yes" 2>/dev/null | grep -q yes; then
         NEED_CONFIG=true
@@ -299,7 +284,7 @@ REMOTE
 fi
 
 # ============================================================
-#  Финальное сообщение
+#  Финал
 # ============================================================
 echo
 echo -e "${BOLD}Деплой завершён.${RESET}"
@@ -315,14 +300,23 @@ if $NEED_CONFIG; then
     # внутри:
     #   login=<твой логин my.sibsutis.ru>
     #   password=<твой пароль>
-    #   group=ИКС-531
-    #   telegram_token=<токен от @BotFather>
-    #   # cycle_anchor=2025-09-01    # для /today (опц.)
+    #   group=ИКС-531                          # опц., для бейджа на главной
+    #   web_listen_addr=:8080                  # опц.
+    #   cache_freshness_minutes=15             # опц.
     ssh $SSH_HOST 'systemctl --user restart $UNIT_NAME'
 EOF
 fi
 
-echo
-info "Диагностика:"
-echo "    ssh $SSH_HOST 'systemctl --user status $UNIT_NAME'"
-echo "    ssh $SSH_HOST 'journalctl --user -u $UNIT_NAME -f'"
+cat <<EOF
+
+Дальше:
+  ssh $SSH_HOST 'curl -s localhost:8080/healthz'              # должно ответить OK
+  ssh $SSH_HOST 'systemctl --user status $UNIT_NAME'
+  ssh $SSH_HOST 'journalctl --user -u $UNIT_NAME -f'
+
+Чтобы открыть из интернета — поправь Caddyfile на сервере:
+  <subdomain> {
+      reverse_proxy 127.0.0.1:8080
+  }
+Caddy сам получит TLS-сертификат через ACME.
+EOF

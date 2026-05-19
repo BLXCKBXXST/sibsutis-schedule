@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}}</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/"><strong>📅 Расписание SibSUTI</strong></a>
+  </header>
+  <main class="container">
+    {{template "content" .}}
+  </main>
+  <footer class="site-footer">
+    <small>
+      <a href="https://github.com/BLXCKBXXST/sibsutis-schedule">sibsutis-schedule</a>
+      · открытый парсер my.sibsutis.ru
+    </small>
+  </footer>
+</body>
+</html>

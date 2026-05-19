@@ -9,6 +9,8 @@
 //	group=ИБ-211
 //	# опционально:
 //	# schedule_url=https://my.sibsutis.ru/students/schedule/
+//	# cache_freshness_minutes=15
+//	# web_listen_addr=:8080
 //
 // Реальный config.txt не попадает в репозиторий (см. .gitignore); в репозитории
 // лежит config.example.txt. Пользователь сам сохраняет логин и пароль в файл —
@@ -29,22 +31,22 @@ import (
 
 // Значения по умолчанию.
 const (
-	DefaultScheduleURL       = "https://my.sibsutis.ru/students/schedule/"
-	DefaultAuthURL           = "https://my.sibsutis.ru/auth/"
-	DefaultTelegramFreshness = 15 * time.Minute
+	DefaultScheduleURL    = "https://my.sibsutis.ru/students/schedule/"
+	DefaultAuthURL        = "https://my.sibsutis.ru/auth/"
+	DefaultCacheFreshness = 15 * time.Minute
+	DefaultWebListenAddr  = ":8080"
 )
 
 // Config — разобранные настройки.
 type Config struct {
-	Login             string
-	Password          string
-	ScheduleURL       string        // базовый URL страницы расписания
-	AuthURL           string        // страница авторизации Bitrix
-	DefaultTarget     *model.Target // target по умолчанию из config.txt; nil — не задан
-	TelegramToken     string        // токен Telegram-бота (нужен только для бота)
-	TelegramFreshness time.Duration // как долго версия в кэше считается свежей для бота
-	CycleAnchor       time.Time     // понедельник любой недели «числителя» — для /today
-	Path              string        // откуда загружен конфиг (для сообщений)
+	Login          string
+	Password       string
+	ScheduleURL    string        // базовый URL страницы расписания
+	AuthURL        string        // страница авторизации Bitrix
+	DefaultTarget  *model.Target // target по умолчанию из config.txt; nil — не задан
+	CacheFreshness time.Duration // как долго версия в кэше считается свежей (для web-сервера)
+	WebListenAddr  string        // адрес и порт прослушивания web-сервера (напр. ":8080")
+	Path           string        // откуда загружен конфиг (для сообщений)
 }
 
 // Load ищет и читает конфиг. Если explicitPath не пуст — используется только он.
@@ -67,7 +69,7 @@ func Load(explicitPath string) (*Config, error) {
 		Password:      values["password"],
 		ScheduleURL:   values["schedule_url"],
 		AuthURL:       values["auth_url"],
-		TelegramToken: values["telegram_token"],
+		WebListenAddr: values["web_listen_addr"],
 		Path:          path,
 	}
 	if cfg.ScheduleURL == "" {
@@ -75,6 +77,9 @@ func Load(explicitPath string) (*Config, error) {
 	}
 	if cfg.AuthURL == "" {
 		cfg.AuthURL = DefaultAuthURL
+	}
+	if cfg.WebListenAddr == "" {
+		cfg.WebListenAddr = DefaultWebListenAddr
 	}
 
 	if cfg.Login == "" || cfg.Password == "" {
@@ -87,46 +92,28 @@ func Load(explicitPath string) (*Config, error) {
 	}
 	cfg.DefaultTarget = target
 
-	if cfg.TelegramFreshness, err = parseFreshness(values["telegram_freshness_minutes"]); err != nil {
-		return nil, fmt.Errorf("%s: %w", path, err)
-	}
-
-	if cfg.CycleAnchor, err = parseAnchor(values["cycle_anchor"]); err != nil {
+	if cfg.CacheFreshness, err = parseFreshness(values["cache_freshness_minutes"]); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 
 	return cfg, nil
 }
 
-// parseFreshness разбирает значение telegram_freshness_minutes (целое число
-// минут). Пусто/0 → DefaultTelegramFreshness.
+// parseFreshness разбирает cache_freshness_minutes (целое число минут).
+// Пусто/0 → DefaultCacheFreshness.
 func parseFreshness(s string) (time.Duration, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
-		return DefaultTelegramFreshness, nil
+		return DefaultCacheFreshness, nil
 	}
 	n, err := strconv.Atoi(s)
 	if err != nil || n < 0 {
-		return 0, fmt.Errorf("telegram_freshness_minutes должно быть неотрицательным целым, получено %q", s)
+		return 0, fmt.Errorf("cache_freshness_minutes должно быть неотрицательным целым, получено %q", s)
 	}
 	if n == 0 {
-		return DefaultTelegramFreshness, nil
+		return DefaultCacheFreshness, nil
 	}
 	return time.Duration(n) * time.Minute, nil
-}
-
-// parseAnchor разбирает cycle_anchor вида YYYY-MM-DD — дату понедельника
-// недели-числителя. Пусто → нулевое время (фича отключена).
-func parseAnchor(s string) (time.Time, error) {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return time.Time{}, nil
-	}
-	t, err := time.ParseInLocation("2006-01-02", s, time.Local)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("cycle_anchor должно быть в формате YYYY-MM-DD, получено %q", s)
-	}
-	return t, nil
 }
 
 // parseTarget извлекает target по умолчанию из ключей group/teacher/room.

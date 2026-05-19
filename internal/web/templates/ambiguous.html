@@ -1,0 +1,14 @@
+{{define "content"}}
+<h2>Уточни запрос</h2>
+<p>По запросу «<code>{{.Target.Query}}</code>» ({{.Target.Type}}) подходит несколько вариантов. Выбери нужный:</p>
+{{if .Options}}
+  <ul class="ambiguous-list">
+    {{range .Options}}
+      <li><a href="/schedule/{{urlType $.Target.Type}}/{{.}}">{{.}}</a></li>
+    {{end}}
+  </ul>
+{{else}}
+  <p class="muted">Список вариантов не удалось разобрать. Уточни запрос вручную и попробуй ещё раз.</p>
+{{end}}
+<p><a class="back" href="/">← к поиску</a></p>
+{{end}}

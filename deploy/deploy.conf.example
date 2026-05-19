@@ -9,4 +9,5 @@
 # ARCH=amd64
 
 # Где лежит проект sibsutis-schedule на твоей машине.
+# По умолчанию — родитель каталога этого скрипта (= корень репо).
 # BOT_SRC=$HOME/my-projects/github-repos/sibsutis-schedule

@@ -1,0 +1,31 @@
+{{define "content"}}
+{{with .Notice}}<p class="notice">{{.}}</p>{{end}}
+
+{{with .DefaultTarget}}
+  <p>
+    <a class="cta" href="/schedule/{{urlType .Type}}/{{.Query}}">
+      📅 Моё расписание ({{.Label}})
+    </a>
+  </p>
+{{end}}
+
+<section class="search">
+  <h2>Найти расписание</h2>
+  <form method="post" action="/search">
+    <fieldset>
+      <legend>Что искать</legend>
+      <label><input type="radio" name="type" value="group" checked> группу</label>
+      <label><input type="radio" name="type" value="teacher"> преподавателя</label>
+      <label><input type="radio" name="type" value="room"> аудиторию</label>
+    </fieldset>
+    <div class="row">
+      <input type="text" name="q" placeholder="напр. ИКС-531, Иванов, 1-101" autofocus required>
+      <button type="submit">Показать</button>
+    </div>
+  </form>
+  <p class="hint">
+    Поиск нестрогий: для преподавателей и аудиторий частичное совпадение даёт
+    список вариантов — кликни нужный.
+  </p>
+</section>
+{{end}}

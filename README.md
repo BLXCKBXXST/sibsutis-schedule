@@ -3,9 +3,14 @@
 Парсер расписания с **[my.sibsutis.ru](https://my.sibsutis.ru/students/schedule/)**.
 
 Логинится в личный кабинет, выгружает расписание **по группе, преподавателю или
-аудитории**, сохраняет каждую выгрузку в локальную **историю версий** и печатает
-расписание таблицей в терминал. Если сайт недоступен — показывает последнюю версию
-из истории с пометкой.
+аудитории**, сохраняет каждую выгрузку в локальную **историю версий**. Два фронта:
+
+- **CLI** (`sibsutis-schedule`) — расписание таблицей в терминал.
+- **Веб-сервер** (`sibsutis-schedule-web`) — открытый HTTP-сайт с формой поиска и
+  страницами расписаний; деплоится одной командой через [`deploy/`](deploy/).
+
+Если my.sibsutis.ru недоступен, обе фронты отдают последнюю успешную выгрузку
+из истории с пометкой `⚠`.
 
 ## Зачем
 
@@ -32,10 +37,15 @@
 ```bash
 cd sibsutis-schedule
 go mod tidy
+
+# CLI
 go build -ldflags="-s -w" -o sibsutis-schedule .
 
+# Веб-сервер
+go build -ldflags="-s -w" -o sibsutis-schedule-web ./cmd/web
+
 # (опционально) положить в PATH
-install -m 755 sibsutis-schedule ~/.local/bin/
+install -m 755 sibsutis-schedule sibsutis-schedule-web ~/.local/bin/
 ```
 
 ## Настройка
@@ -193,83 +203,85 @@ journalctl --user -u sibsutis-schedule.service
 6. **render** — расписание печатается таблицей; при недоступности сайта берётся
    последняя версия из истории с пометкой `⚠`.
 
-## Telegram-бот
+## Веб-сайт
 
-В репозитории есть второй бинарник — `sibsutis-schedule-bot`, открытый
-Telegram-бот поверх парсера: команды для запроса расписания + подписки на
-уведомления при изменениях. Любой пользователь Telegram может обратиться;
-все используют твои креденшелы my.sibsutis.ru для выгрузки.
+В репозитории есть второй бинарник — `sibsutis-schedule-web`, открытый HTTP-сервер
+поверх парсера. Любой может зайти и посмотреть расписание любой группы,
+преподавателя или аудитории; все запросы идут через одни креденшелы владельца
+сервера к my.sibsutis.ru.
 
 ### Защита от нагрузки
 
-- **Кэш-свежесть**: повторный запрос того же target'а в течение `telegram_freshness_minutes`
-  (по умолчанию 15 мин) отвечает из истории, не дёргая сайт.
-- **Singleflight**: параллельные запросы одного target'а сливаются в один fetch.
-- **Per-chat throttle**: не чаще 1 команды в 3 секунды на чат.
-- **Фоновое обновление**: бот сам каждые 30 минут обновляет default target и все
-  target'ы из подписок; отдельный systemd-таймер от CLI не нужен.
+- **Кэш-свежесть**: повторный запрос того же target'а в течение
+  `cache_freshness_minutes` (по умолчанию 15 мин) отвечает из истории, не
+  дёргая my.sibsutis.ru.
+- **Singleflight**: параллельные запросы одного target'а сливаются в один
+  HTTP-цикл на upstream.
+- **HTTP-кэш**: страницы расписания отдаются с `Cache-Control: public, max-age=300`
+  (5 мин) — браузеры и CDN сами кэшируют.
+- **Фолбэк на историю**: если my.sibsutis.ru недоступен, страница отдаёт
+  последнюю успешную версию с пометкой `⚠ сайт недоступен`.
 
-### Настройка
+### Маршруты
+
+| Метод | Путь | Что |
+|---|---|---|
+| GET | `/` | главная с формой поиска и кнопкой «моё расписание» (если задан target в config) |
+| POST | `/search` | принимает форму, 303-редирект на `/schedule/...` |
+| GET | `/schedule/group/{q}` | расписание группы |
+| GET | `/schedule/teacher/{q}` | расписание преподавателя |
+| GET | `/schedule/room/{q}` | расписание аудитории |
+| GET | `/static/*` | CSS и прочая статика (вшиты через `embed`) |
+| GET | `/healthz` | `200 OK` для readiness/liveness |
+
+Если запрос неоднозначен (например, `/schedule/teacher/Иванов` и Ивановых много) —
+сервер отдаёт страницу со списком вариантов как ссылок.
+
+### Локальный запуск
 
 ```bash
-# 1. Получи токен у @BotFather и допиши в config.txt (БЕЗ чтения файла):
-printf '\ntelegram_token=123456:AA...\n' >> config.txt
-
-# 2. (опц.) задай начало двухнедельного цикла, чтобы работали /today и /tomorrow:
-printf 'cycle_anchor=2025-09-01\n' >> config.txt   # понедельник любой недели «числителя»
-
-# 3. Собери и поставь бинарник
-go build -ldflags="-s -w" -o sibsutis-schedule-bot ./cmd/bot
-install -m 755 sibsutis-schedule-bot ~/.local/bin/
+go build -ldflags="-s -w" -o sibsutis-schedule-web ./cmd/web
+./sibsutis-schedule-web --config ./config.txt
+# теперь сайт на http://localhost:8080
 ```
 
-### Запуск как user-сервис
+Адрес и порт можно сменить через `web_listen_addr=:8181` в `config.txt`.
 
-Локально вручную:
+### Деплой на сервер
 
-```bash
-mkdir -p ~/.config/systemd/user
-cp systemd/sibsutis-schedule-bot.service ~/.config/systemd/user/
-systemctl --user daemon-reload
-systemctl --user enable --now sibsutis-schedule-bot.service
-journalctl --user -u sibsutis-schedule-bot.service -f
-```
-
-На удалённый сервер — есть готовый деплой-скрипт в [deploy/](deploy/):
+Готовый скрипт [`deploy/deploy.sh`](deploy/deploy.sh) — одна команда:
 
 ```bash
 cd deploy
-./deploy.sh --host my-server     # кросс-сборка + scp + systemd-user + linger
+cp deploy.conf.example deploy.conf      # опц.
+nano deploy.conf                        # SSH_HOST=my-server и т.д.
+./deploy.sh --host my-server            # build → scp → systemd-user → linger → start
 ```
 
-См. [deploy/README.md](deploy/README.md).
+Подробности и варианты — в [`deploy/README.md`](deploy/README.md).
 
-### Команды бота
+### HTTPS через Caddy
 
-| Команда | Что делает |
-|---|---|
-| `/start`, `/help` | Подсказка |
-| `/schedule` | Расписание target'а по умолчанию (из `config.txt`) |
-| `/group <название>` | Расписание группы (`ИКС-531`) |
-| `/teacher <ФИО>` | Расписание преподавателя |
-| `/room <номер>` | Расписание аудитории |
-| `/today`, `/tomorrow` | Расписание на день (нужен `cycle_anchor`) |
-| `/week numerator\|denominator` | Конкретная неделя |
-| `/subscribe <group\|teacher\|room> <запрос>` | Подписаться на изменения |
-| `/subscriptions` | Список моих подписок |
-| `/unsubscribe ...` | Отписаться |
+На сервере с Caddy — добавь в `Caddyfile`:
 
-При неоднозначном запросе (`/teacher Иванов`, а Ивановых много) бот показывает
-список вариантов — нужно дописать запрос точнее.
+```
+schedule.example.com {
+    reverse_proxy 127.0.0.1:8080
+}
+```
+
+Caddy сам получит сертификат через ACME. Без HTTPS сайт всё равно работает —
+на `http://<server>:8080`.
 
 ## Структура проекта
 
 ```
 sibsutis-schedule/
 ├── main.go                       # CLI: разбор аргументов, команды, выбор target'а
-├── cmd/bot/                      # entry point Telegram-бота
+├── cmd/web/                      # entry point HTTP-сервера
+├── deploy/                       # deploy.sh для веб-сервера (rsync + systemd-user)
 ├── config.example.txt            # образец конфига
-├── systemd/                      # unit-файлы для CLI-таймера и бота
+├── systemd/                      # unit-файлы для CLI-таймера и web-сервера
 ├── .github/workflows/release.yml # кросс-сборка бинарников по тегу
 └── internal/
     ├── config/   # загрузка config.txt
@@ -279,10 +291,9 @@ sibsutis-schedule/
     ├── fetch/    # запрос страницы расписания авторизованным клиентом
     ├── parse/    # разбор встроенного JSON расписания в Schedule
     ├── store/    # история версий по каждому target'у: сохранение, чтение, дедуп
-    ├── render/   # вывод расписания таблицей в терминал
+    ├── render/   # вывод расписания таблицей в терминал (для CLI)
     ├── schedule/ # обёртка fetchFresh с кэш-свежестью и singleflight
-    ├── subs/     # подписки Telegram-чатов на изменения расписания
-    └── bot/      # Telegram-бот: команды, форматирование, уведомления
+    └── web/      # HTTP-сервер: маршруты, html/template, embedded static
 ```
 
 ### Зависимости
@@ -290,10 +301,9 @@ sibsutis-schedule/
 | Пакет | Назначение |
 |-------|-----------|
 | `github.com/PuerkitoBio/goquery` | разбор HTML формы авторизации |
-| `github.com/go-telegram-bot-api/telegram-bot-api/v5` | Telegram Bot API (только в боте) |
-| `golang.org/x/sync/singleflight` | дедуп параллельных фетчей (только в боте) |
+| `golang.org/x/sync/singleflight` | дедуп параллельных фетчей в schedule.Service |
 
-Конфиг, разбор расписания (JSON), история и таблица вывода — на стандартной библиотеке.
+Конфиг, разбор расписания (JSON), история, шаблоны и таблица вывода — на стандартной библиотеке.
 
 ## Лицензия
 

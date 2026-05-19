@@ -48,13 +48,14 @@ jobs:
         run: |
           go build -ldflags="-s -w" -o sibsutis-schedule-${{ matrix.suffix }} .
 
-      - name: Build bot
+      - name: Build web
+        if: matrix.goos == 'linux'
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: '0'
         run: |
-          go build -ldflags="-s -w" -o sibsutis-schedule-bot-${{ matrix.suffix }} ./cmd/bot
+          go build -ldflags="-s -w" -o sibsutis-schedule-web-${{ matrix.suffix }} ./cmd/web
 
       - name: Upload CLI artifact
         uses: actions/upload-artifact@v4
@@ -62,11 +63,12 @@ jobs:
           name: sibsutis-schedule-${{ matrix.suffix }}
           path: sibsutis-schedule-${{ matrix.suffix }}
 
-      - name: Upload bot artifact
+      - name: Upload web artifact
+        if: matrix.goos == 'linux'
         uses: actions/upload-artifact@v4
         with:
-          name: sibsutis-schedule-bot-${{ matrix.suffix }}
-          path: sibsutis-schedule-bot-${{ matrix.suffix }}
+          name: sibsutis-schedule-web-${{ matrix.suffix }}
+          path: sibsutis-schedule-web-${{ matrix.suffix }}
 
   release:
     needs: build
@@ -80,7 +82,7 @@ jobs:
       - name: Collect binaries
         run: |
           mkdir -p release
-          find artifacts -type f \( -name 'sibsutis-schedule-*' -o -name 'sibsutis-schedule-bot-*' \) \
+          find artifacts -type f \( -name 'sibsutis-schedule-*' -o -name 'sibsutis-schedule-web-*' \) \
             -exec cp {} release/ \;
           chmod +x release/sibsutis-schedule-*
           ls -lh release/

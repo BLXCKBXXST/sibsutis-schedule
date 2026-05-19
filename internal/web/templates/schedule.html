@@ -1,0 +1,60 @@
+{{define "content"}}
+{{ $s := .Schedule }}
+{{ $type := .Target.Type }}
+
+<header class="schedule-header">
+  <h2>{{.Target.Label}}{{with $s.Title}} <small>({{.}})</small>{{end}}</h2>
+  {{if .FromCache}}
+    <p class="warn">⚠ {{.CacheReason}} — показано из истории, выгружено {{formatTime $s.FetchedAt}}</p>
+  {{else}}
+    <p class="muted">Выгружено: {{formatTime $s.FetchedAt}}</p>
+  {{end}}
+</header>
+
+{{if $s.IsEmpty}}
+  <p class="muted">Пар не найдено.</p>
+{{else}}
+  {{range $s.Weeks}}
+    <section class="week">
+      <h3>{{ .Name | capitalize }}</h3>
+      {{range .Days}}
+        <article class="day">
+          <h4>📅 {{.Weekday}}</h4>
+          {{if .Lessons}}
+            <table class="lessons">
+              <thead>
+                <tr>
+                  <th>№</th>
+                  <th>Время</th>
+                  <th>Пара</th>
+                  <th>Тип</th>
+                  <th>Преподаватель</th>
+                  <th>Аудитория</th>
+                  <th>{{if isStudent $type}}Подгр.{{else}}Группы{{end}}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {{range .Lessons}}
+                <tr>
+                  <td>{{if gt .Number 0}}{{.Number}}{{end}}</td>
+                  <td><b>{{timeRange .}}</b></td>
+                  <td>{{.Subject}}</td>
+                  <td><i>{{.Type}}</i></td>
+                  <td>{{join ", " .Teachers}}</td>
+                  <td>{{.Room}}</td>
+                  <td>{{if isStudent $type}}{{.Subgroup}}{{else}}{{join ", " .Groups}}{{end}}</td>
+                </tr>
+                {{end}}
+              </tbody>
+            </table>
+          {{else}}
+            <p class="muted">— нет занятий</p>
+          {{end}}
+        </article>
+      {{end}}
+    </section>
+  {{end}}
+{{end}}
+
+<p><a class="back" href="/">← к поиску</a></p>
+{{end}}

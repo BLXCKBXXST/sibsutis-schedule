@@ -1,0 +1,14 @@
+[Unit]
+Description=SibSUTI schedule web server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Поправь пути под себя.
+ExecStart=%h/.local/bin/sibsutis-schedule-web --config %h/.config/sibsutis-schedule/config.txt
+Restart=on-failure
+RestartSec=10s
+
+[Install]
+WantedBy=default.target

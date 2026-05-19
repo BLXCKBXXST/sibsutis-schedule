@@ -19,10 +19,9 @@ group=ИБ-211
 # teacher=Иванов И.И.
 # room=1-101
 
-# --- Telegram-бот (нужен только если запускаешь sibsutis-schedule-bot) ---
-# telegram_token=123456:AA... (получи у @BotFather)
-# telegram_freshness_minutes=15        # сколько минут считать кэш свежим
-# cycle_anchor=2025-09-01               # понедельник любой недели «числителя» для /today
+# --- Web-сервер (нужен только если запускаешь sibsutis-schedule-web) ---
+# web_listen_addr=:8080                  # адрес и порт прослушивания
+# cache_freshness_minutes=15             # как долго версия считается свежей
 
 # Необязательно — переопределить адреса (по умолчанию значения ниже):
 # schedule_url=https://my.sibsutis.ru/students/schedule/

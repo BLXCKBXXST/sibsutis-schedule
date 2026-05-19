@@ -1,6 +1,6 @@
-# Binaries (только корневые — не цеплять unit-файлы и cmd/bot/)
+# Binaries (только корневые — не цеплять unit-файлы и cmd/web/)
 /sibsutis-schedule
-/sibsutis-schedule-bot
+/sibsutis-schedule-web
 *.exe
 dist/
 

@@ -1,0 +1,173 @@
+/* Минимальный CSS — без фреймворков, без JS. */
+
+:root {
+  --bg: #fafafa;
+  --fg: #1c1c1c;
+  --muted: #6c6c6c;
+  --accent: #0066cc;
+  --warn-bg: #fff4e0;
+  --warn-fg: #864c00;
+  --error-bg: #ffe9ea;
+  --error-fg: #a40015;
+  --border: #d8d8d8;
+  --row: #fff;
+  --row-alt: #f3f3f3;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a1a1a;
+    --fg: #ececec;
+    --muted: #8c8c8c;
+    --accent: #6bb7ff;
+    --warn-bg: #3a2a10;
+    --warn-fg: #ffcf89;
+    --error-bg: #3a1418;
+    --error-fg: #ff9aa5;
+    --border: #353535;
+    --row: #1f1f1f;
+    --row-alt: #232323;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.site-header {
+  border-bottom: 1px solid var(--border);
+  padding: 0.75rem 1rem;
+}
+.brand { font-size: 1.1rem; }
+.brand strong { font-weight: 600; }
+
+.container {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 3rem;
+}
+
+.site-footer {
+  border-top: 1px solid var(--border);
+  padding: 0.75rem 1rem;
+  text-align: center;
+  color: var(--muted);
+}
+
+h2 { margin-top: 0; }
+h3 { margin: 1.5rem 0 0.5rem; }
+h4 { margin: 1rem 0 0.25rem; }
+
+.muted { color: var(--muted); }
+.notice {
+  background: var(--warn-bg);
+  color: var(--warn-fg);
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+}
+.warn {
+  background: var(--warn-bg);
+  color: var(--warn-fg);
+  padding: 0.4rem 0.6rem;
+  border-radius: 4px;
+  display: inline-block;
+}
+.error {
+  background: var(--error-bg);
+  color: var(--error-fg);
+  padding: 0.6rem 0.8rem;
+  border-radius: 6px;
+  white-space: pre-wrap;
+}
+
+/* Главная */
+.cta {
+  display: inline-block;
+  padding: 0.75rem 1.25rem;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 6px;
+  font-weight: 500;
+}
+.cta:hover { text-decoration: none; opacity: 0.92; }
+
+.search { margin-top: 2rem; }
+.search fieldset {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.6rem 1rem;
+  margin: 0 0 0.75rem;
+}
+.search legend { font-size: 0.9rem; color: var(--muted); padding: 0 0.25rem; }
+.search label { margin-right: 1rem; }
+.search .row { display: flex; gap: 0.5rem; }
+.search input[type="text"] {
+  flex: 1;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--row);
+  color: var(--fg);
+  font: inherit;
+}
+.search button {
+  padding: 0.55rem 1.2rem;
+  border: none;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+.search .hint { font-size: 0.9rem; color: var(--muted); margin-top: 0.75rem; }
+
+/* Расписание */
+.schedule-header { margin-bottom: 1rem; }
+.schedule-header h2 small { color: var(--muted); font-weight: 400; }
+
+.week + .week { margin-top: 1.5rem; }
+.day { margin: 0.5rem 0 1.5rem; }
+
+.lessons {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+.lessons th, .lessons td {
+  text-align: left;
+  padding: 0.45rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.lessons th {
+  font-weight: 600;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  color: var(--muted);
+  letter-spacing: 0.05em;
+}
+.lessons tbody tr:nth-child(even) { background: var(--row-alt); }
+.lessons tbody tr:nth-child(odd)  { background: var(--row); }
+
+@media (max-width: 700px) {
+  .lessons thead { display: none; }
+  .lessons, .lessons tbody, .lessons tr, .lessons td { display: block; width: 100%; }
+  .lessons tr { padding: 0.5rem; border-bottom: 1px solid var(--border); }
+  .lessons td { border: none; padding: 0.1rem 0; }
+  .lessons td:empty { display: none; }
+}
+
+.ambiguous-list { padding-left: 1.25rem; }
+.ambiguous-list li { margin: 0.25rem 0; }
+
+.back { display: inline-block; margin-top: 1.5rem; color: var(--muted); }
