@@ -56,17 +56,41 @@ systemctl --user restart sibsutis-schedule-web.service
 
 ## HTTPS через Caddy
 
-Сервис слушает локальный порт (по умолчанию `:8080`). Чтобы открыть наружу по
-HTTPS — пробрось субдомен в `Caddyfile`:
+Поддомен: **`sibsutis.server34.netcraze.club`** (та же схема, что у `fmd.` и
+`files.` из репозитория [home-server](https://github.com/BLXCKBXXST/home-server)).
 
-```
-schedule.example.com {
-    reverse_proxy 127.0.0.1:8080
-}
-```
+Важно: на сервере Caddy крутится **контейнером** в docker-стеке `/opt/stack` и
+проксирует к другим контейнерам по имени. Наш веб-сервер работает на **хосте**
+как systemd-сервис, не в Docker — поэтому Caddy ходит к нему через адрес хоста
+(`host.docker.internal`), а не `127.0.0.1`.
 
-Caddy сам получит сертификат через ACME. Без Caddy сайт работает на
-`http://<server>:8080` (если порт открыт фаерволом).
+1. В `/opt/stack/docker-compose.yml`, в сервис `caddy:`, добавь (если ещё нет):
+
+   ```yaml
+       extra_hosts:
+         - "host.docker.internal:host-gateway"
+   ```
+
+2. В `/opt/stack/caddy/Caddyfile` добавь блок:
+
+   ```
+   sibsutis.server34.netcraze.club {
+       encode gzip
+       reverse_proxy host.docker.internal:8080
+   }
+   ```
+
+3. DNS-запись `sibsutis.server34.netcraze.club` (A/CNAME — туда же, куда
+   указывают `fmd.` и `files.`), затем перезапусти Caddy:
+
+   ```bash
+   cd /opt/stack && docker compose up -d caddy
+   ```
+
+Caddy сам выпустит Let's Encrypt-сертификат при первом обращении. Порт `8080`
+наружу (на роутере) пробрасывать **не нужно** — только 80/443 для Caddy.
+
+Без Caddy сайт работает на `http://<server-ip>:8080` (если порт открыт).
 
 ## Диагностика
 

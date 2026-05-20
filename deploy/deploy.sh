@@ -223,8 +223,7 @@ cat <<EOF
   ./deploy.sh --status     # статус, логи, проверка healthz
   curl -s localhost:$(web_port)/healthz
 
-HTTPS — пробрось субдомен на сервис через Caddy (в Caddyfile):
-  schedule.<домен> {
-      reverse_proxy 127.0.0.1:$(web_port)
-  }
+HTTPS: поддомен sibsutis.server34.netcraze.club через Caddy.
+Caddy у тебя в Docker — проксировать надо на host.docker.internal:$(web_port),
+не на 127.0.0.1. Точные шаги (extra_hosts + блок Caddyfile) — в ./README.md.
 EOF
