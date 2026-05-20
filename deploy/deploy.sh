@@ -152,12 +152,12 @@ if loginctl show-user "$(whoami)" 2>/dev/null | grep -q '^Linger=yes'; then
     info "linger уже включён"
 else
     info "включаю linger (чтобы сервис жил без активного логина)"
-    if loginctl enable-linger "$(whoami)" 2>/dev/null \
-        || sudo -A loginctl enable-linger "$(whoami)" 2>/dev/null \
-        || sudo loginctl enable-linger "$(whoami)" 2>/dev/null; then
+    if loginctl enable-linger "$(whoami)" 2>/dev/null; then
         success "linger включён"
+    elif sudo loginctl enable-linger "$(whoami)"; then
+        success "linger включён (через sudo)"
     else
-        warn "не удалось включить linger автоматически — запусти вручную:"
+        warn "не удалось включить linger — запусти вручную:"
         echo "    sudo loginctl enable-linger $(whoami)"
     fi
 fi
