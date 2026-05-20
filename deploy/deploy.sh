@@ -7,12 +7,11 @@
 #  запускает сервис. Go, git и прочее на сервере не нужны.
 #
 #  Использование:
-#    ./deploy.sh                     установить последний релиз
-#    ./deploy.sh --version v0.3.0    установить конкретный тег
-#    ./deploy.sh --no-restart        поставить, но не запускать
-#    ./deploy.sh --uninstall         остановить и удалить
+#    ./deploy.sh              установить / обновить до последнего релиза
+#    ./deploy.sh --status     показать статус сервиса и логи
+#    ./deploy.sh --uninstall  остановить и удалить
 #
-#  Идемпотентно — повторный запуск просто обновляет бинарник.
+#  Установка идемпотентна — повторный запуск обновляет бинарник.
 # =============================================================
 
 set -euo pipefail
@@ -31,16 +30,13 @@ print_help() {
 sibsutis-schedule-web — установка на сервер
 
 Использование:
-  ./deploy.sh [--version <tag>] [--no-restart] [--uninstall]
+  ./deploy.sh              установить / обновить до последнего релиза + запустить
+  ./deploy.sh --status     показать статус сервиса, логи и проверку healthz
+  ./deploy.sh --uninstall  остановить юнит, удалить unit-файл и бинарник
+                           (config.txt и история не трогаются)
+  ./deploy.sh --help       эта справка
 
-Опции:
-  --version <tag>   установить конкретный релиз (напр. v0.3.0); default — latest
-  --no-restart      поставить бинарник и юнит, но не запускать сервис
-  --uninstall       остановить юнит, удалить unit-файл и бинарник
-                    (config.txt и история не трогаются)
-  -h, --help        эта справка
-
-Что делает: качает sibsutis-schedule-web-linux-<arch> из GitHub Releases,
+Установка: качает sibsutis-schedule-web-linux-<arch> из GitHub Releases,
 кладёт в ~/.local/bin, ставит ~/.config/systemd/user/-юнит, включает linger,
 запускает сервис. Подробности — в ./README.md.
 HELP
@@ -55,23 +51,53 @@ UNIT_DIR="$HOME/.config/systemd/user"
 CONFIG_DIR="$HOME/.config/sibsutis-schedule"
 CONFIG_FILE="$CONFIG_DIR/config.txt"
 
-RELEASE_TAG="latest"
-NO_RESTART=false
-UNINSTALL=false
+ACTION="install"
 
 # ─── Аргументы ────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --version)    RELEASE_TAG="$2"; shift 2 ;;
-        --no-restart) NO_RESTART=true;  shift ;;
-        --uninstall)  UNINSTALL=true;   shift ;;
-        -h|--help)    print_help; exit 0 ;;
+        --status)    ACTION="status";    shift ;;
+        --uninstall) ACTION="uninstall"; shift ;;
+        -h|--help)   print_help; exit 0 ;;
         *) error "Неизвестный аргумент: $1 (см. --help)" ;;
     esac
 done
 
-# ─── Uninstall ────────────────────────────────────────────────
-if $UNINSTALL; then
+# webPort вытаскивает порт из web_listen_addr в config.txt (default 8080).
+web_port() {
+    local addr="" port="8080"
+    if [[ -f "$CONFIG_FILE" ]]; then
+        addr=$(grep -E '^[[:space:]]*web_listen_addr[[:space:]]*=' "$CONFIG_FILE" \
+            | tail -1 | cut -d= -f2- | tr -d '[:space:]')
+    fi
+    [[ "$addr" == *:* ]] && port="${addr##*:}"
+    echo "$port"
+}
+
+# ============================================================
+#  --status
+# ============================================================
+if [[ "$ACTION" == "status" ]]; then
+    info "Статус ${UNIT_NAME}"
+    systemctl --user --no-pager status "$UNIT_NAME" || true
+    echo
+    info "Последние логи"
+    journalctl --user -u "$UNIT_NAME" -n 15 --no-pager || true
+    echo
+    PORT=$(web_port)
+    info "Проверка healthz (порт ${PORT})"
+    if curl -fsS -m 5 "http://localhost:${PORT}/healthz" >/dev/null 2>&1; then
+        success "healthz отвечает — сервис жив"
+    else
+        warn "healthz не ответил на :${PORT}"
+    fi
+    exit 0
+fi
+
+# ============================================================
+#  --uninstall
+# ============================================================
+if [[ "$ACTION" == "uninstall" ]]; then
     info "Удаляю сервис и бинарник"
     systemctl --user disable --now "$UNIT_NAME" 2>/dev/null || true
     rm -f "$UNIT_DIR/$UNIT_NAME" "$BIN_DIR/$BIN_NAME"
@@ -82,6 +108,10 @@ if $UNINSTALL; then
     echo "    loginctl disable-linger $(whoami)"
     exit 0
 fi
+
+# ============================================================
+#  Установка (действие по умолчанию)
+# ============================================================
 
 # ─── 1. Архитектура ───────────────────────────────────────────
 info "Определяю архитектуру"
@@ -96,19 +126,14 @@ success "linux/$ARCH"
 command -v curl >/dev/null 2>&1 || error "не найден 'curl' — поставь его (apt install curl)"
 
 ASSET="${BIN_NAME}-linux-${ARCH}"
-if [[ "$RELEASE_TAG" == "latest" ]]; then
-    URL="https://github.com/${REPO}/releases/latest/download/${ASSET}"
-else
-    URL="https://github.com/${REPO}/releases/download/${RELEASE_TAG}/${ASSET}"
-fi
+URL="https://github.com/${REPO}/releases/latest/download/${ASSET}"
 
 info "Скачиваю $URL"
 TMP_BIN="$(mktemp)"
 trap 'rm -f "$TMP_BIN"' EXIT
 if ! curl -fL --retry 3 --retry-delay 2 -o "$TMP_BIN" "$URL"; then
     error "не удалось скачать бинарник.
-       Проверь, что релиз ${RELEASE_TAG} опубликован:
-       https://github.com/${REPO}/releases"
+       Проверь, что релиз опубликован: https://github.com/${REPO}/releases"
 fi
 [[ -s "$TMP_BIN" ]] || error "скачан пустой файл"
 success "скачано ($(du -h "$TMP_BIN" | cut -f1))"
@@ -164,20 +189,15 @@ fi
 
 # ─── 7. Запуск ────────────────────────────────────────────────
 systemctl --user daemon-reload
-
-if $NO_RESTART; then
-    info "--no-restart: сервис не запускаю"
+if systemctl --user is-active --quiet "$UNIT_NAME"; then
+    systemctl --user restart "$UNIT_NAME"
+    success "сервис перезапущен"
 else
-    if systemctl --user is-active --quiet "$UNIT_NAME"; then
-        systemctl --user restart "$UNIT_NAME"
-        success "сервис перезапущен"
-    else
-        systemctl --user enable --now "$UNIT_NAME"
-        success "сервис включён и запущен"
-    fi
-    sleep 1
-    systemctl --user --no-pager status "$UNIT_NAME" | head -10 || true
+    systemctl --user enable --now "$UNIT_NAME"
+    success "сервис включён и запущен"
 fi
+sleep 1
+systemctl --user --no-pager status "$UNIT_NAME" | head -10 || true
 
 # ─── Финал ────────────────────────────────────────────────────
 echo
@@ -199,13 +219,12 @@ fi
 
 cat <<EOF
 
-Проверка:
-  curl -s localhost:8080/healthz          # должно ответить OK
-  systemctl --user status $UNIT_NAME
-  journalctl --user -u $UNIT_NAME -f
+Дальше:
+  ./deploy.sh --status     # статус, логи, проверка healthz
+  curl -s localhost:$(web_port)/healthz
 
-HTTPS — пробрось субдомен на сервис через Caddy:
+HTTPS — пробрось субдомен на сервис через Caddy (в Caddyfile):
   schedule.<домен> {
-      reverse_proxy 127.0.0.1:8080
+      reverse_proxy 127.0.0.1:$(web_port)
   }
 EOF
