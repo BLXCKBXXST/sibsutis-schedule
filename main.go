@@ -31,7 +31,7 @@ import (
 	"github.com/BLXCKBXXST/sibsutis-schedule/internal/store"
 )
 
-const version = "0.2.0"
+const version = "0.3.0"
 
 // httpTimeout — общий таймаут на сетевые операции (логин + поиск + выгрузка).
 const httpTimeout = 25 * time.Second

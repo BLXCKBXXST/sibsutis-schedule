@@ -1,80 +1,62 @@
 # deploy/
 
-Деплой `sibsutis-schedule-web` (HTTP-сервер расписания) на сервер одной командой:
-кросс-сборка → `scp` → systemd-user + linger → старт сервиса.
+Установка `sibsutis-schedule-web` (HTTP-сервер расписания) **на сервер** одной
+командой: скачивание готового бинарника из GitHub Releases → systemd-user юнит
+→ linger → запуск.
 
-Запускать **из этого каталога**: скрипт сам определяет корень репо как родителя
-своего каталога, поэтому флаг `--source` обычно не нужен.
-
-## Зачем
-
-Чтобы каждый push новой версии не превращался в ручной обход трёх каталогов
-на сервере. `./deploy.sh --host my-server` — и всё.
-
-Скрипт идемпотентен: повторный запуск пересобирает бинарник, обновляет его
-атомарно (`install -m 755`) и перезапускает юнит. `config.txt` с секретами
-**никогда не трогается**.
-
-## Требования
-
-- Локально: **Go 1.25+**, `ssh`, `scp`.
-- На сервере: Linux с **systemd**, SSH-доступ по ключу (или `ssh-agent` с
-  passphrase). `loginctl enable-linger` обычно не требует `sudo`, на свежих
-  системах — может попросить (скрипт делает `sudo -A` fallback).
-- На сервере **не нужны** ни Go, ни git, ни какие-то пакеты — всё в одном
-  статическом бинарнике.
+Скрипт запускается **на самом сервере**. Ни Go, ни git, ни сборка на сервере не
+нужны — берётся готовый статический бинарник из релиза.
 
 ## Быстрый старт
 
 ```bash
-cp deploy.conf.example deploy.conf
-nano deploy.conf                          # SSH_HOST=my-server и т.д. (опц.)
-
-./deploy.sh                               # если SSH_HOST задан в deploy.conf
-# или:
-./deploy.sh --host my-server --arch amd64
+# на сервере, в любом каталоге:
+./deploy.sh                      # ставит последний релиз
 ```
 
-При первом запуске на сервере появится **пустой** `~/.config/sibsutis-schedule/config.txt`
-с правами 600. Впиши секреты и перезапусти юнит:
+При первом запуске создаётся пустой `~/.config/sibsutis-schedule/config.txt`
+(права 600) — впиши туда секреты и перезапусти сервис:
 
 ```bash
-ssh my-server 'nano ~/.config/sibsutis-schedule/config.txt'
+nano ~/.config/sibsutis-schedule/config.txt
 # login=...
 # password=...
-# group=ИКС-531                          (опц., для бейджа «моё расписание»)
-# web_listen_addr=:8080                  (опц., default :8080)
-# cache_freshness_minutes=15             (опц., default 15)
-ssh my-server 'systemctl --user restart sibsutis-schedule-web.service'
+# group=ИКС-531              (опц., для кнопки «моё расписание» на главной)
+# web_listen_addr=:8080      (опц., default :8080)
+systemctl --user restart sibsutis-schedule-web.service
 ```
 
 ## Аргументы
 
-| Флаг | По умолчанию | Что |
-|---|---|---|
-| `--host <alias>` | из `deploy.conf` | алиас сервера из `~/.ssh/config` или `user@host` |
-| `--arch amd64\|arm64` | `amd64` | архитектура серверного бинарника |
-| `--source <path>` | родитель каталога скрипта (= корень репо) | путь к проекту |
-| `--dry-run` | — | перечислить шаги, ничего не делать |
-| `--no-restart` | — | собрать и залить, но не дёргать `systemctl` |
-| `--uninstall` | — | остановить юнит, удалить unit + бинарник (config.txt и история на месте) |
-| `--help`, `-h` | — | справка |
+| Флаг | Что |
+|---|---|
+| `--version <tag>` | поставить конкретный релиз (напр. `v0.3.0`); по умолчанию — последний |
+| `--no-restart` | поставить бинарник и юнит, но не запускать сервис |
+| `--uninstall` | остановить юнит, удалить unit-файл и бинарник (config.txt и история не трогаются) |
+| `--help`, `-h` | справка |
 
-## Что куда кладётся на сервере
+Повторный запуск просто обновляет бинарник до свежего релиза и перезапускает сервис.
+
+## Требования
+
+- Linux с **systemd**, `curl`.
+- Архитектура `amd64` или `arm64` (определяется автоматически через `uname -m`).
+- `loginctl enable-linger` обычно работает без `sudo`; на части систем просит root
+  — скрипт делает `sudo -A` fallback, иначе подскажет команду.
+
+## Что куда кладётся
 
 ```
-~/.local/bin/sibsutis-schedule-web                          # бинарник
-~/.config/systemd/user/sibsutis-schedule-web.service        # юнит
-~/.config/sibsutis-schedule/config.txt                      # секреты (chmod 600)
-~/.local/share/sibsutis-schedule/                           # история версий
+~/.local/bin/sibsutis-schedule-web                     # бинарник
+~/.config/systemd/user/sibsutis-schedule-web.service   # юнит (генерируется скриптом)
+~/.config/sibsutis-schedule/config.txt                 # секреты (chmod 600)
+~/.local/share/sibsutis-schedule/                      # история версий расписания
 ```
-
-`config.txt` и `~/.local/share/sibsutis-schedule/` — данные пользователя, скрипт
-их не перезаписывает.
 
 ## HTTPS через Caddy
 
-На сервере уже стоит Caddy — добавь в `Caddyfile` блок:
+Сервис слушает локальный порт (по умолчанию `:8080`). Чтобы открыть наружу по
+HTTPS — пробрось субдомен в `Caddyfile`:
 
 ```
 schedule.example.com {
@@ -82,37 +64,22 @@ schedule.example.com {
 }
 ```
 
-Caddy сам получит TLS-сертификат через ACME. После `caddy reload` сайт доступен
-по HTTPS. Без Caddy сайт всё равно работает — просто на `http://<server>:8080`.
+Caddy сам получит сертификат через ACME. Без Caddy сайт работает на
+`http://<server>:8080` (если порт открыт фаерволом).
 
 ## Диагностика
 
 ```bash
-ssh my-server 'systemctl --user status sibsutis-schedule-web.service'
-ssh my-server 'journalctl --user -u sibsutis-schedule-web.service -f'
-ssh my-server 'curl -s localhost:8080/healthz'
+curl -s localhost:8080/healthz                          # → OK
+systemctl --user status sibsutis-schedule-web.service
+journalctl --user -u sibsutis-schedule-web.service -f
 ```
 
-Если статус `failed` сразу после первого деплоя — скорее всего пустой
-`config.txt`. Впиши секреты и `restart`.
+Статус `failed` сразу после первой установки — обычно пустой `config.txt`.
+Впиши секреты и `systemctl --user restart sibsutis-schedule-web.service`.
 
-## Известные грабли
+## Откуда берётся бинарник
 
-- **linger не включается без sudo.** На некоторых дистрибутивах
-  `loginctl enable-linger` требует root. Скрипт делает `sudo -A` fallback, но
-  если нет TTY для askpass — `enable-linger` пропустится и юнит не переживёт
-  logout. В этом случае подключись по SSH и сделай вручную:
-  `sudo loginctl enable-linger $(whoami)`.
-- **Архитектура несовпадает.** Скрипт сам пробует через `uname -m`
-  определить серверную архитектуру и предупредить. ARMv7 / RISC-V — не
-  поддерживается в скрипте, собирай вручную через `GOARCH=...`.
-- **Порт 8080 занят.** Поменяй `web_listen_addr` в `config.txt` (например `:8181`)
-  и поправь `reverse_proxy` в Caddyfile.
-
-## Удаление
-
-```bash
-./deploy.sh --host my-server --uninstall
-ssh my-server 'rm -rf ~/.config/sibsutis-schedule ~/.local/share/sibsutis-schedule'
-ssh my-server 'sudo loginctl disable-linger $(whoami)'   # если linger тебе больше не нужен
-```
+Релизы собирает GitHub Actions ([`.github/workflows/release.yml`](../.github/workflows/release.yml))
+по тегу `v*`: кросс-компиляция `sibsutis-schedule-web-linux-amd64` и `-arm64`,
+публикация в Releases. `deploy.sh` качает нужный по архитектуре сервера.
