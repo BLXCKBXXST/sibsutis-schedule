@@ -12,6 +12,11 @@
   --border: #d8d8d8;
   --row: #fff;
   --row-alt: #f3f3f3;
+  --now-bg: #e8f4ff;
+  --now-bar: #0066cc;
+  --next-bg: #fff8e0;
+  --next-bar: #d18900;
+  --today-bg: #f1f7fb;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -27,6 +32,11 @@
     --border: #353535;
     --row: #1f1f1f;
     --row-alt: #232323;
+    --now-bg: #0f2a44;
+    --now-bar: #6bb7ff;
+    --next-bg: #3a2a10;
+    --next-bar: #ffcf89;
+    --today-bg: #1a2230;
   }
 }
 
@@ -135,6 +145,17 @@ h4 { margin: 1rem 0 0.25rem; }
 .schedule-header { margin-bottom: 1rem; }
 .schedule-header h2 small { color: var(--muted); font-weight: 400; }
 
+.now-strip {
+  display: inline-block;
+  margin-top: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  background: var(--now-bg);
+  border-left: 4px solid var(--now-bar);
+  border-radius: 4px;
+  font-size: 0.95rem;
+}
+.now-strip #next-timer { font-weight: 600; }
+
 .week + .week { margin-top: 1.5rem; }
 .day { margin: 0.5rem 0 1.5rem; }
 
@@ -158,6 +179,39 @@ h4 { margin: 1rem 0 0.25rem; }
 }
 .lessons tbody tr:nth-child(even) { background: var(--row-alt); }
 .lessons tbody tr:nth-child(odd)  { background: var(--row); }
+
+/* Подсветка «идёт сейчас» / «ближайшая следующая». is-now перебивает
+   зебру (важнее для глаз), is-next подсвечивается чуть мягче. */
+.lessons tbody tr.is-now {
+  background: var(--now-bg);
+  box-shadow: inset 4px 0 0 0 var(--now-bar);
+}
+.lessons tbody tr.is-next {
+  background: var(--next-bg);
+  box-shadow: inset 4px 0 0 0 var(--next-bar);
+}
+
+/* Сегодняшний день в активной неделе — лёгкая заливка карточки дня. */
+.day[data-today] {
+  background: var(--today-bg);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+}
+.day[data-today="upcoming"] {
+  /* «не сегодня, но ближайший учебный день» — отметка скромнее. */
+  background: transparent;
+  outline: 1px dashed var(--border);
+}
+.day[data-today] h4::after {
+  content: " — сегодня";
+  color: var(--accent);
+  font-size: 0.85em;
+  font-weight: normal;
+}
+.day[data-today="upcoming"] h4::after {
+  content: " — ближайший день";
+  color: var(--muted);
+}
 
 @media (max-width: 700px) {
   .lessons thead { display: none; }

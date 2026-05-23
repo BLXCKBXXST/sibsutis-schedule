@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/BLXCKBXXST/sibsutis-schedule/internal/model"
 	"github.com/BLXCKBXXST/sibsutis-schedule/internal/resolve"
@@ -21,11 +22,16 @@ type homeData struct {
 
 // scheduleData — данные для страницы расписания.
 type scheduleData struct {
-	Title       string
-	Schedule    model.Schedule
-	Target      model.Target
-	FromCache   bool
-	CacheReason string
+	Title        string
+	Schedule     model.Schedule
+	Target       model.Target
+	FromCache    bool
+	CacheReason  string
+	Today        todayHint
+	NowLesson    *lessonRef // пара, идущая прямо сейчас (или nil)
+	NextLesson   *lessonRef // следующая пара по расписанию (или nil)
+	NextLessonAt time.Time  // точное начало NextLesson (для live-таймера)
+	ServerNow    time.Time  // момент рендера в зоне Asia/Krasnoyarsk
 }
 
 // ambiguousData — данные для страницы «уточни запрос».
@@ -150,6 +156,8 @@ func (s *Server) handleSchedule(w http.ResponseWriter, r *http.Request) {
 		cacheReason = "из кэша"
 	}
 
+	now := time.Now().In(krskLocation)
+	hl := highlights(result.Schedule, now)
 	w.Header().Set("Cache-Control", "public, max-age=300")
 	s.render.render(w, http.StatusOK, "schedule", scheduleData{
 		Title:       target.Label() + " — расписание",
@@ -157,6 +165,11 @@ func (s *Server) handleSchedule(w http.ResponseWriter, r *http.Request) {
 		Target:      target,
 		FromCache:   fromCache,
 		CacheReason: cacheReason,
+		Today:       computeTodayHint(result.Schedule, now),
+		NowLesson:   hl.Now,
+		NextLesson:  hl.Next,
+		NextLessonAt: hl.NextAt,
+		ServerNow:   now,
 	})
 }
 

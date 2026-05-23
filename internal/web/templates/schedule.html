@@ -1,6 +1,7 @@
 {{define "content"}}
 {{ $s := .Schedule }}
 {{ $type := .Target.Type }}
+{{ $today := .Today }}
 
 <header class="schedule-header">
   <h2>{{.Target.Label}}{{with $s.Title}} <small>({{.}})</small>{{end}}</h2>
@@ -9,17 +10,23 @@
   {{else}}
     <p class="muted">Выгружено: {{formatTime $s.FetchedAt}}</p>
   {{end}}
+  {{if .NextLesson}}
+    <aside class="now-strip" data-next-iso="{{.NextLessonAt.Format "2006-01-02T15:04:05-07:00"}}">
+      Следующая пара начнётся через <span id="next-timer">…</span>
+    </aside>
+  {{end}}
 </header>
 
 {{if $s.IsEmpty}}
   <p class="muted">Пар не найдено.</p>
 {{else}}
-  {{range $s.Weeks}}
-    <section class="week">
-      <h3>{{ .Name | capitalize }}</h3>
-      {{range .Days}}
-        <article class="day">
-          <h4>📅 {{.Weekday}}</h4>
+  {{range $wi, $w := $s.Weeks}}
+    <section class="week"{{if and $today.Found (eq $wi $today.WeekIdx)}} data-active-week="true"{{end}}>
+      <h3>{{ $w.Name | capitalize }}</h3>
+      {{range $di, $d := $w.Days}}
+        {{ $isToday := and $today.Found (eq $wi $today.WeekIdx) (eq $di $today.DayIdx) }}
+        <article class="day"{{if $isToday}} id="today" data-today="{{if $today.IsExactDay}}exact{{else}}upcoming{{end}}"{{end}}>
+          <h4>📅 {{$d.Weekday}}</h4>
           {{if .Lessons}}
             <table class="lessons">
               <thead>
@@ -34,15 +41,16 @@
                 </tr>
               </thead>
               <tbody>
-                {{range .Lessons}}
-                <tr>
-                  <td>{{if gt .Number 0}}{{.Number}}{{end}}</td>
-                  <td><b>{{timeRange .}}</b></td>
-                  <td>{{.Subject}}</td>
-                  <td><i>{{.Type}}</i></td>
-                  <td>{{join ", " .Teachers}}</td>
-                  <td>{{.Room}}</td>
-                  <td>{{if isStudent $type}}{{.Subgroup}}{{else}}{{join ", " .Groups}}{{end}}</td>
+                {{range $li, $l := $d.Lessons}}
+                {{ $cls := lessonClass $.NowLesson $.NextLesson $wi $di $li }}
+                <tr{{if $cls}} class="{{$cls}}"{{end}}>
+                  <td>{{if gt $l.Number 0}}{{$l.Number}}{{end}}</td>
+                  <td><b>{{timeRange $l}}</b></td>
+                  <td>{{$l.Subject}}</td>
+                  <td><i>{{$l.Type}}</i></td>
+                  <td>{{join ", " $l.Teachers}}</td>
+                  <td>{{$l.Room}}</td>
+                  <td>{{if isStudent $type}}{{$l.Subgroup}}{{else}}{{join ", " $l.Groups}}{{end}}</td>
                 </tr>
                 {{end}}
               </tbody>

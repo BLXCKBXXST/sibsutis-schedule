@@ -64,6 +64,18 @@ func newRenderer() (*renderer, error) {
 				return ""
 			}
 		},
+		// lessonClass возвращает CSS-класс для строки пары: "is-now" для
+		// идущей сейчас, "is-next" для ближайшей следующей, пусто иначе.
+		// nowRef и nextRef могут быть nil.
+		"lessonClass": func(nowRef, nextRef *lessonRef, wi, di, li int) string {
+			if nowRef != nil && nowRef.WeekIdx == wi && nowRef.DayIdx == di && nowRef.LessonIdx == li {
+				return "is-now"
+			}
+			if nextRef != nil && nextRef.WeekIdx == wi && nextRef.DayIdx == di && nextRef.LessonIdx == li {
+				return "is-next"
+			}
+			return ""
+		},
 	}
 
 	pages := map[string]*template.Template{}
