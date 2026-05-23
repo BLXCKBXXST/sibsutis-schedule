@@ -28,39 +28,42 @@ type todayHint struct {
 }
 
 // computeTodayHint решает, какой день в Schedule считать «сегодняшним».
+// Использует календарную формулу model.WeekParity (а не Lesson.Dates: они
+// заполнены данными о сдаче семестрового проекта и для «сегодня» не годятся).
 //
-//  1. Если сегодня попадает на пары — берём индекс этой недели.
-//  2. Иначе берём ближайший будущий учебный день из StudyDates() и помечаем
-//     IsExactDay=false — шаблон в этом случае может показать «ближайший день»,
-//     а не «сегодня».
-//  3. Если расписание вообще без дат (старая версия истории без PROJECT_DATES) —
-//     возвращаем Found=false.
+//  1. Если в активной неделе (parity) в сегодняшнем дне есть пары — Found=true,
+//     IsExactDay=true.
+//  2. Иначе ищем ближайший будущий рабочий день по двухнедельному циклу
+//     (максимум 14 итераций — гарантированно охватим оба варианта parity).
+//     IsExactDay=false.
+//  3. Если в расписании вообще нет пар — Found=false.
 func computeTodayHint(s model.Schedule, now time.Time) todayHint {
 	now = now.In(krskLocation)
 	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, krskLocation)
 
-	if idx, ok := s.WeekIndexFor(todayStart); ok {
-		return todayHint{
-			Found:      true,
-			WeekIdx:    idx,
-			DayIdx:     weekdayIndex(todayStart),
-			Today:      todayStart,
-			IsExactDay: true,
-		}
+	if len(s.Weeks) < 2 {
+		return todayHint{}
 	}
 
-	for _, d := range s.StudyDates() {
-		if d.Before(todayStart) {
+	for offset := 0; offset < 14; offset++ {
+		date := todayStart.AddDate(0, 0, offset)
+		wi := model.WeekParity(date, time.Time{})
+		di := weekdayIndex(date)
+		if wi < 0 || wi >= len(s.Weeks) {
 			continue
 		}
-		if idx, ok := s.WeekIndexFor(d); ok {
-			return todayHint{
-				Found:      true,
-				WeekIdx:    idx,
-				DayIdx:     weekdayIndex(d),
-				Today:      d,
-				IsExactDay: false,
-			}
+		if di < 0 || di >= len(s.Weeks[wi].Days) {
+			continue
+		}
+		if len(s.Weeks[wi].Days[di].Lessons) == 0 {
+			continue
+		}
+		return todayHint{
+			Found:      true,
+			WeekIdx:    wi,
+			DayIdx:     di,
+			Today:      date,
+			IsExactDay: offset == 0,
 		}
 	}
 	return todayHint{}
@@ -90,54 +93,69 @@ type lessonHL struct {
 }
 
 // highlights определяет, какая пара идёт прямо сейчас и какая будет
-// следующей по расписанию. Now=nil — сейчас никто не идёт; Next=nil —
-// расписание закончилось.
+// следующей по двухнедельному циклу. Now=nil — сейчас никто не идёт;
+// Next=nil — расписание совсем пустое.
+//
+// Алгоритм: считаем parity сегодняшней недели через model.WeekParity.
+// Для «сейчас идёт» проверяем только пары из Weeks[parity].Days[weekday].
+// Для «следующей» итерируем 14 дней вперёд начиная с сегодня — на каждом
+// дне выбираем подходящую неделю Schedule и проверяем все пары этого
+// (weekday) дня; первый begin, который > now, выигрывает (между парами
+// одного дня сравниваем по часам).
 func highlights(s model.Schedule, now time.Time) lessonHL {
 	now = now.In(krskLocation)
-	todayKey := now.Format("2006-01-02")
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, krskLocation)
 
-	type candidate struct {
-		ref   lessonRef
-		start time.Time
+	if len(s.Weeks) < 2 {
+		return lessonHL{}
 	}
+
 	var (
 		cur      *lessonRef
-		bestNext *candidate
+		bestNext *lessonRef
+		bestAt   time.Time
 	)
 
-	for wi, w := range s.Weeks {
-		for di, d := range w.Days {
-			for li, l := range d.Lessons {
-				from, fromErr := parseHHMMLocal(l.TimeFrom)
-				to, toErr := parseHHMMLocal(l.TimeTo)
-				if fromErr {
-					continue
-				}
-				for _, ld := range l.Dates {
-					begin := time.Date(ld.Year(), ld.Month(), ld.Day(), from.h, from.m, 0, 0, krskLocation)
-					// Кандидат на «сейчас идёт»: сегодня + время совпало.
-					if !toErr && ld.Format("2006-01-02") == todayKey {
-						end := time.Date(ld.Year(), ld.Month(), ld.Day(), to.h, to.m, 0, 0, krskLocation)
-						if !now.Before(begin) && now.Before(end) && cur == nil {
-							ref := lessonRef{wi, di, li}
-							cur = &ref
-						}
-					}
-					// Кандидат на «следующая»: начало строго в будущем,
-					// минимальное.
-					if begin.After(now) {
-						if bestNext == nil || begin.Before(bestNext.start) {
-							bestNext = &candidate{lessonRef{wi, di, li}, begin}
-						}
-					}
+	for offset := 0; offset < 14; offset++ {
+		date := todayStart.AddDate(0, 0, offset)
+		wi := model.WeekParity(date, time.Time{})
+		di := weekdayIndex(date)
+		if wi >= len(s.Weeks) || di >= len(s.Weeks[wi].Days) {
+			continue
+		}
+		for li, l := range s.Weeks[wi].Days[di].Lessons {
+			from, ferr := parseHHMMLocal(l.TimeFrom)
+			to, terr := parseHHMMLocal(l.TimeTo)
+			if ferr {
+				continue
+			}
+			begin := time.Date(date.Year(), date.Month(), date.Day(), from.h, from.m, 0, 0, krskLocation)
+
+			// is-now: пара относится к сегодняшнему дню и now попадает в [begin, end).
+			if offset == 0 && !terr && cur == nil {
+				end := time.Date(date.Year(), date.Month(), date.Day(), to.h, to.m, 0, 0, krskLocation)
+				if !now.Before(begin) && now.Before(end) {
+					ref := lessonRef{wi, di, li}
+					cur = &ref
 				}
 			}
+
+			// is-next: ближайшая пара, начало которой строго в будущем.
+			if begin.After(now) && (bestNext == nil || begin.Before(bestAt)) {
+				ref := lessonRef{wi, di, li}
+				bestNext = &ref
+				bestAt = begin
+			}
 		}
+		// Если нашли next в сегодняшнем дне и он не позже завтрашних
+		// потенциальных кандидатов — можно и не идти дальше, но цикл
+		// дешёвый, доводим до конца ради надёжности.
 	}
+
 	hl := lessonHL{Now: cur}
 	if bestNext != nil {
-		hl.Next = &bestNext.ref
-		hl.NextAt = bestNext.start
+		hl.Next = bestNext
+		hl.NextAt = bestAt
 	}
 	return hl
 }
