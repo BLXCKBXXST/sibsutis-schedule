@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestParseScheduleSample(t *testing.T) {
@@ -63,6 +64,20 @@ func TestParseScheduleSample(t *testing.T) {
 	if len(l.Groups) != 1 || l.Groups[0] != "ТЕСТ-11" {
 		t.Errorf("Groups = %v", l.Groups)
 	}
+	// Dates — 3 даты PROJECT_DATES, отсортированы по возрастанию, формат DD-MM-YYYY.
+	wantDates := []time.Time{
+		time.Date(2026, 2, 2, 0, 0, 0, 0, time.UTC),
+		time.Date(2026, 2, 16, 0, 0, 0, 0, time.UTC),
+		time.Date(2026, 3, 2, 0, 0, 0, 0, time.UTC),
+	}
+	if len(l.Dates) != len(wantDates) {
+		t.Fatalf("Dates len = %d, want %d (%v)", len(l.Dates), len(wantDates), l.Dates)
+	}
+	for i, d := range l.Dates {
+		if !d.Equal(wantDates[i]) {
+			t.Errorf("Dates[%d] = %s, want %s", i, d.Format("2006-01-02"), wantDates[i].Format("2006-01-02"))
+		}
+	}
 
 	// Вторник числителя: TEACHER пришёл строкой, не массивом — должен стать срезом.
 	tue := sched.Weeks[0].Days[1]
@@ -86,6 +101,10 @@ func TestParseScheduleSample(t *testing.T) {
 	}
 	if monDen.Lessons[0].Subject != "Физика" {
 		t.Errorf("знаменатель понедельник Subject = %q", monDen.Lessons[0].Subject)
+	}
+	// PROJECT_DATES в этой паре отсутствует в фикстуре — Dates должно остаться пустым.
+	if len(monDen.Lessons[0].Dates) != 0 {
+		t.Errorf("знаменатель понедельник: Dates должны быть пустыми, получено %v", monDen.Lessons[0].Dates)
 	}
 }
 

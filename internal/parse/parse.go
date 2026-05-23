@@ -12,11 +12,16 @@ import (
 	"encoding/json"
 	"errors"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/BLXCKBXXST/sibsutis-schedule/internal/model"
 )
+
+// projectDateLayout — формат START_DATE в PROJECT_DATES (например, "27-04-2026").
+const projectDateLayout = "02-01-2006"
 
 // ErrNoScheduleData означает, что на странице не найдены данные расписания
 // (страница выбора группы, ошибка сайта или изменилась вёрстка).
@@ -95,6 +100,7 @@ func lessonsFromCells(cells []rawCell) []model.Lesson {
 			}
 			lessons = append(lessons, model.Lesson{
 				Number:   i + 1,
+				Dates:    parseProjectDates(it.ProjectDates),
 				TimeFrom: from,
 				TimeTo:   to,
 				Subject:  subject,
@@ -107,6 +113,39 @@ func lessonsFromCells(cells []rawCell) []model.Lesson {
 		}
 	}
 	return lessons
+}
+
+// parseProjectDates превращает массив PROJECT_DATES сайта в отсортированный
+// список календарных дат проведения пары. Дубликаты убираются (на случай
+// нескольких записей с одной START_DATE). Невалидные строки игнорируются —
+// пара просто получит меньше дат.
+func parseProjectDates(raw []rawProjectDate) []time.Time {
+	if len(raw) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(raw))
+	out := make([]time.Time, 0, len(raw))
+	for _, r := range raw {
+		s := strings.TrimSpace(r.StartDate)
+		if s == "" {
+			continue
+		}
+		t, err := time.Parse(projectDateLayout, s)
+		if err != nil {
+			continue
+		}
+		key := t.Format("2006-01-02")
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, t)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Before(out[j]) })
+	return out
 }
 
 // hhmm извлекает время ЧЧ:ММ из строки даты-времени.
@@ -135,13 +174,22 @@ type rawCell struct {
 }
 
 type rawItem struct {
-	Discipline string      `json:"DISCIPLINE"`
-	TypeLesson string      `json:"TYPE_LESSON"`
-	Teacher    flexStrings `json:"TEACHER"`
-	Classroom  string      `json:"CLASSROOM"`
-	Group      flexStrings `json:"GROUP"`
-	Subgroup   string      `json:"SUBGROUP"`
-	WeekDay    string      `json:"WEEK_DAY"`
+	Discipline   string           `json:"DISCIPLINE"`
+	TypeLesson   string           `json:"TYPE_LESSON"`
+	Teacher      flexStrings      `json:"TEACHER"`
+	Classroom    string           `json:"CLASSROOM"`
+	Group        flexStrings      `json:"GROUP"`
+	Subgroup     string           `json:"SUBGROUP"`
+	WeekDay      string           `json:"WEEK_DAY"`
+	ProjectDates []rawProjectDate `json:"PROJECT_DATES"`
+}
+
+// rawProjectDate — одна запись из PROJECT_DATES. END_DATE сейчас не используется
+// (на боевых данных всегда равен START_DATE), но оставлен, чтобы JSON не терялся
+// при будущих изменениях формата.
+type rawProjectDate struct {
+	StartDate string `json:"START_DATE"`
+	EndDate   string `json:"END_DATE"`
 }
 
 // flexStrings разбирает поле, которое сайт отдаёт то массивом строк, то одной
