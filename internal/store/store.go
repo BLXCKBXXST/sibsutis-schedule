@@ -36,10 +36,10 @@ type Store struct {
 
 // VersionInfo — краткая сводка по одной сохранённой версии (для команды history).
 type VersionInfo struct {
-	ID        string    // идентификатор версии = имя файла без .json
-	FetchedAt time.Time // когда выгружено
-	Title     string    // подпись расписания (название группы / ФИО / аудитория)
-	Lessons   int       // суммарное число пар
+	ID        string    `json:"id"`         // идентификатор версии = имя файла без .json
+	FetchedAt time.Time `json:"fetched_at"` // когда выгружено
+	Title     string    `json:"title,omitempty"`
+	Lessons   int       `json:"lessons"`
 }
 
 // Meta — служебная информация о последних проверках target'а.
