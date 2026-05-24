@@ -15,6 +15,11 @@
       Следующая пара начнётся через <span id="next-timer">…</span>
     </aside>
   {{end}}
+  <p class="schedule-actions">
+    <a class="action" href="/calendar/{{urlType $type}}/{{.Target.Query}}">
+      Скачать в календарь (.ics)
+    </a>
+  </p>
 </header>
 
 {{if $s.IsEmpty}}

@@ -179,6 +179,18 @@ h4 { margin: 1rem 0 0.25rem; }
 }
 .now-strip #next-timer { font-weight: 600; }
 
+.schedule-actions { margin-top: 0.5rem; }
+.action {
+  display: inline-block;
+  padding: 0.35rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--row);
+  color: var(--accent);
+  font-size: 0.9rem;
+}
+.action:hover { background: var(--row-alt); text-decoration: none; }
+
 /* Переключатель «числитель / знаменатель / обе». */
 .week-tabs {
   display: flex;

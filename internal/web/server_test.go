@@ -517,6 +517,33 @@ func TestAPIHistoryListAndDiff(t *testing.T) {
 	}
 }
 
+func TestScheduleICSRenders(t *testing.T) {
+	srv := newTestServer(t, &stubFetcher{}, nil)
+	ts := httptest.NewServer(srv.Routes())
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/calendar/group/" + url.PathEscape("ИКС-531"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/calendar") {
+		t.Errorf("Content-Type = %q", ct)
+	}
+	if cd := resp.Header.Get("Content-Disposition"); !strings.Contains(cd, "attachment") {
+		t.Errorf("Content-Disposition = %q", cd)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	for _, mustHave := range []string{"BEGIN:VCALENDAR", "BEGIN:VEVENT", "RRULE:FREQ=WEEKLY;INTERVAL=2"} {
+		if !strings.Contains(string(body), mustHave) {
+			t.Errorf("в .ics нет %q", mustHave)
+		}
+	}
+}
+
 func TestNetworkErrorFallsBackToCache(t *testing.T) {
 	srv := newTestServer(t, &stubFetcher{err: errors.New("боже сайт лёг")}, nil)
 	// положим в store кэш для target

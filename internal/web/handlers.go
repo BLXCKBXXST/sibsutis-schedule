@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/BLXCKBXXST/sibsutis-schedule/internal/diff"
+	"github.com/BLXCKBXXST/sibsutis-schedule/internal/ics"
 	"github.com/BLXCKBXXST/sibsutis-schedule/internal/model"
 	"github.com/BLXCKBXXST/sibsutis-schedule/internal/resolve"
 	"github.com/BLXCKBXXST/sibsutis-schedule/internal/schedule"
@@ -348,6 +349,55 @@ func parseShowWeek(raw string, today todayHint) int {
 		return today.WeekIdx
 	}
 	return -1
+}
+
+// handleScheduleICS отдаёт расписание target'а в iCalendar-формате.
+// GET /schedule/{type}/{q}.ics. Источник тот же — svc.Get с фолбэком на
+// историю; RawHTML в .ics не идёт. Content-Disposition заставляет браузер
+// предложить «открыть в календаре» вместо рендера в окне.
+func (s *Server) handleScheduleICS(w http.ResponseWriter, r *http.Request) {
+	tt, ok := urlTypeToTargetType(r.PathValue("type"))
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	q := r.PathValue("q")
+	if q == "" {
+		http.NotFound(w, r)
+		return
+	}
+	target := model.Target{Type: tt, Query: q}
+
+	result, err := s.svc.Get(r.Context(), target, s.cfg.CacheFreshness)
+	if err != nil &&
+		!errors.Is(err, resolve.ErrNotFound) &&
+		!errors.Is(err, resolve.ErrAmbiguous) {
+		if sched, _, lerr := s.store.Latest(target.Key()); lerr == nil {
+			result = schedule.Result{Schedule: sched, Source: schedule.SourceCache}
+			err = nil
+		}
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+
+	body := ics.RenderSchedule(result.Schedule, ics.Options{
+		Anchor: time.Now().In(krskLocation),
+		Loc:    krskLocation,
+	})
+	w.Header().Set("Content-Type", "text/calendar; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=900")
+	filename := icsFilename(target)
+	w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
+	_, _ = w.Write(body)
+}
+
+// icsFilename — латиница-only имя файла, чтобы не воевать с кодировками
+// в HTTP-заголовке. Структура: sibsutis-<type>-<хэш ключа>.ics.
+func icsFilename(t model.Target) string {
+	key := strings.ReplaceAll(t.Key(), "/", "-")
+	return "sibsutis-" + key + ".ics"
 }
 
 // handleAPISchedule отдаёт расписание target'а в JSON. Тот же source-of-truth,
