@@ -23,6 +23,15 @@ type Entry struct {
 	Type        model.TargetType `json:"type"`
 	Query       string           `json:"query"`
 	LastTouched time.Time        `json:"last_touched"`
+	// Subscribers — Telegram chat_id-ы, подписанные на изменения этого
+	// target'а. nil/пусто — подписок нет; запись всё равно может жить
+	// в реестре для поддержания горячего кэша.
+	Subscribers []int64 `json:"subscribers,omitempty"`
+	// LastNotifiedVersion — ID версии из store, по которой в последний
+	// раз была отправлена рассылка diff'а. Защита от дубликатов: после
+	// очередного fetch рассылку шлём только если ID последней версии
+	// в store отличается. Пусто — рассылок ещё не было.
+	LastNotifiedVersion string `json:"last_notified_version,omitempty"`
 }
 
 // Target собирает Entry обратно в model.Target.
@@ -74,15 +83,127 @@ func Open(path string) (*Registry, error) {
 }
 
 // Touch создаёт или обновляет запись для target'а — точку last_touched
-// сдвигаем на now. Возвращает true, если запись была новой.
+// сдвигаем на now. Subscribers и LastNotifiedVersion сохраняются, если
+// запись существовала. Возвращает true, если запись была новой.
 func (r *Registry) Touch(t model.Target, now time.Time) (bool, error) {
 	key := t.Key()
 	r.mu.Lock()
-	_, existed := r.data[key]
-	r.data[key] = Entry{Type: t.Type, Query: t.Query, LastTouched: now}
+	prev, existed := r.data[key]
+	e := Entry{Type: t.Type, Query: t.Query, LastTouched: now}
+	if existed {
+		e.Subscribers = prev.Subscribers
+		e.LastNotifiedVersion = prev.LastNotifiedVersion
+	}
+	r.data[key] = e
 	err := r.flushLocked()
 	r.mu.Unlock()
 	return !existed, err
+}
+
+// Subscribe добавляет chatID в подписчиков target'а. Создаёт запись,
+// если её ещё нет (с LastTouched=now). Идемпотентно — повторная подписка
+// того же chatID не плодит дубликатов. Возвращает true, если подписка
+// действительно была добавлена (а не уже существовала).
+func (r *Registry) Subscribe(t model.Target, chatID int64, now time.Time) (bool, error) {
+	key := t.Key()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	e, ok := r.data[key]
+	if !ok {
+		e = Entry{Type: t.Type, Query: t.Query, LastTouched: now}
+	}
+	for _, id := range e.Subscribers {
+		if id == chatID {
+			r.data[key] = e
+			return false, r.flushLocked()
+		}
+	}
+	e.Subscribers = append(e.Subscribers, chatID)
+	r.data[key] = e
+	return true, r.flushLocked()
+}
+
+// Unsubscribe убирает chatID из подписчиков. Если после этого никого
+// не осталось — запись остаётся (Touch её всё равно держит для кэша).
+// Возвращает true, если что-то реально было убрано.
+func (r *Registry) Unsubscribe(t model.Target, chatID int64) (bool, error) {
+	key := t.Key()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	e, ok := r.data[key]
+	if !ok {
+		return false, nil
+	}
+	newSubs := e.Subscribers[:0:0]
+	removed := false
+	for _, id := range e.Subscribers {
+		if id == chatID {
+			removed = true
+			continue
+		}
+		newSubs = append(newSubs, id)
+	}
+	if !removed {
+		return false, nil
+	}
+	e.Subscribers = newSubs
+	r.data[key] = e
+	return true, r.flushLocked()
+}
+
+// SubscribersOf возвращает копию списка подписчиков target'а.
+func (r *Registry) SubscribersOf(t model.Target) []int64 {
+	key := t.Key()
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	e, ok := r.data[key]
+	if !ok || len(e.Subscribers) == 0 {
+		return nil
+	}
+	out := make([]int64, len(e.Subscribers))
+	copy(out, e.Subscribers)
+	return out
+}
+
+// TargetsForChat возвращает все target'ы, на которые подписан chatID.
+// Используется для команды /list бота.
+func (r *Registry) TargetsForChat(chatID int64) []model.Target {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var out []model.Target
+	for _, e := range r.data {
+		for _, id := range e.Subscribers {
+			if id == chatID {
+				out = append(out, e.Target())
+				break
+			}
+		}
+	}
+	return out
+}
+
+// Entry возвращает копию записи реестра по target'у. ok=false — нет такой.
+func (r *Registry) Entry(t model.Target) (Entry, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	e, ok := r.data[t.Key()]
+	return e, ok
+}
+
+// MarkNotified фиксирует, что для target'а уже отправлена рассылка по
+// версии versionID. Дальнейшие рассылки для той же версии должны
+// пропускаться.
+func (r *Registry) MarkNotified(t model.Target, versionID string) error {
+	key := t.Key()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	e, ok := r.data[key]
+	if !ok {
+		return nil
+	}
+	e.LastNotifiedVersion = versionID
+	r.data[key] = e
+	return r.flushLocked()
 }
 
 // Remove убирает target из реестра. Безопасно вызывать для несуществующих.
@@ -110,12 +231,17 @@ func (r *Registry) List() []Entry {
 	return out
 }
 
-// Prune удаляет записи старше cutoff. Возвращает число удалённых target'ов.
+// Prune удаляет записи старше cutoff. Записи с непустым Subscribers не
+// трогаются — пока кто-то подписан, target нужно держать горячим, иначе
+// уведомления перестанут приходить. Возвращает число удалённых target'ов.
 func (r *Registry) Prune(cutoff time.Time) (int, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	var removed int
 	for key, e := range r.data {
+		if len(e.Subscribers) > 0 {
+			continue
+		}
 		if e.LastTouched.Before(cutoff) {
 			delete(r.data, key)
 			removed++

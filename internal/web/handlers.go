@@ -14,6 +14,7 @@ import (
 	"github.com/BLXCKBXXST/sibsutis-schedule/internal/diff"
 	"github.com/BLXCKBXXST/sibsutis-schedule/internal/ics"
 	"github.com/BLXCKBXXST/sibsutis-schedule/internal/model"
+	"github.com/BLXCKBXXST/sibsutis-schedule/internal/notify"
 	"github.com/BLXCKBXXST/sibsutis-schedule/internal/resolve"
 	"github.com/BLXCKBXXST/sibsutis-schedule/internal/schedule"
 	"github.com/BLXCKBXXST/sibsutis-schedule/internal/store"
@@ -60,6 +61,10 @@ type scheduleData struct {
 	// ICSWebcalURL — webcal://-URL подписки в календарь, генерируется
 	// из текущего хоста запроса и HMAC-подписанного токена target'а.
 	ICSWebcalURL string
+	// TelegramSubscribeURL — ссылка на бота с deep-link'ом, добавляющая
+	// текущий target в подписки. Пусто — Telegram-бот не настроен,
+	// кнопка скрыта.
+	TelegramSubscribeURL string
 }
 
 // ambiguousData — данные для страницы «уточни запрос».
@@ -303,6 +308,10 @@ func (s *Server) handleSchedule(w http.ResponseWriter, r *http.Request) {
 	order := [2]int{current, 1 - current}
 	icsToken := signICSTarget(s.cfg.ICSSecret, target)
 	webcal := "webcal://" + r.Host + "/ics/" + icsToken
+	var tgURL string
+	if s.tgBotUsername != "" {
+		tgURL = "https://t.me/" + s.tgBotUsername + "?start=" + notify.EncodeStartToken(target)
+	}
 	if s.onTouch != nil {
 		s.onTouch(target)
 	}
@@ -319,10 +328,11 @@ func (s *Server) handleSchedule(w http.ResponseWriter, r *http.Request) {
 		NextLessonAt: hl.NextAt,
 		ServerNow:    now,
 		ShowWeek:     showWeek,
-		WeekStarts:   starts,
-		WeekOrder:    order,
-		CurrentWeek:  current,
-		ICSWebcalURL: webcal,
+		WeekStarts:           starts,
+		WeekOrder:            order,
+		CurrentWeek:          current,
+		ICSWebcalURL:         webcal,
+		TelegramSubscribeURL: tgURL,
 	})
 }
 

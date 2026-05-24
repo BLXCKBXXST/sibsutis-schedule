@@ -31,6 +31,9 @@ group=ИБ-211
 #                                        # «горячие» target'ы (мин). Минимум 5.
 # watch_ttl_minutes=20160                # через сколько без просмотров target
 #                                        # выкидывается из watch.json (мин).
+# telegram_bot_token=                    # токен Telegram-бота от @BotFather.
+#                                        # Без него бот и рассылка diff
+#                                        # отключены; всё остальное работает.
 
 # Необязательно — переопределить адреса (по умолчанию значения ниже):
 # schedule_url=https://my.sibsutis.ru/students/schedule/

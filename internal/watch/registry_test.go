@@ -77,6 +77,76 @@ func TestRegistryPrune(t *testing.T) {
 	}
 }
 
+func TestRegistrySubscribeUnsubscribe(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "watch.json")
+	r, _ := Open(path)
+	now := time.Date(2026, 5, 24, 12, 0, 0, 0, time.UTC)
+	target := model.Target{Type: model.TypeStudent, Query: "X"}
+
+	added, _ := r.Subscribe(target, 111, now)
+	if !added {
+		t.Error("первая подписка должна вернуть added=true")
+	}
+	added2, _ := r.Subscribe(target, 111, now)
+	if added2 {
+		t.Error("повторная подписка должна вернуть added=false")
+	}
+	_, _ = r.Subscribe(target, 222, now)
+
+	subs := r.SubscribersOf(target)
+	if len(subs) != 2 {
+		t.Errorf("SubscribersOf = %v, want [111 222]", subs)
+	}
+
+	if list := r.TargetsForChat(111); len(list) != 1 || list[0].Query != "X" {
+		t.Errorf("TargetsForChat(111) = %+v", list)
+	}
+
+	removed, _ := r.Unsubscribe(target, 111)
+	if !removed {
+		t.Error("Unsubscribe должен был убрать 111")
+	}
+	if subs := r.SubscribersOf(target); len(subs) != 1 || subs[0] != 222 {
+		t.Errorf("после Unsubscribe: %v", subs)
+	}
+}
+
+func TestRegistryPruneKeepsSubscribers(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "watch.json")
+	r, _ := Open(path)
+	old := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
+
+	withSubs := model.Target{Type: model.TypeStudent, Query: "WITH_SUBS"}
+	_, _ = r.Subscribe(withSubs, 42, old)
+
+	withoutSubs := model.Target{Type: model.TypeStudent, Query: "PLAIN"}
+	_, _ = r.Touch(withoutSubs, old)
+
+	cutoff := time.Date(2026, 5, 24, 0, 0, 0, 0, time.UTC)
+	n, _ := r.Prune(cutoff)
+	if n != 1 {
+		t.Errorf("Prune убрал %d, want 1", n)
+	}
+	if list := r.List(); len(list) != 1 || list[0].Query != "WITH_SUBS" {
+		t.Errorf("после Prune остался не тот target: %+v", list)
+	}
+}
+
+func TestRegistryMarkNotifiedRoundtrip(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "watch.json")
+	r, _ := Open(path)
+	target := model.Target{Type: model.TypeStudent, Query: "X"}
+	_, _ = r.Touch(target, time.Now())
+	_ = r.MarkNotified(target, "v1")
+
+	r2, _ := Open(path)
+	for _, e := range r2.List() {
+		if e.LastNotifiedVersion != "v1" {
+			t.Errorf("LastNotifiedVersion после reopen = %q", e.LastNotifiedVersion)
+		}
+	}
+}
+
 func TestRegistryConcurrentSafe(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "watch.json")
 	r, _ := Open(path)

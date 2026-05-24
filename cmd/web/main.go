@@ -17,6 +17,7 @@ import (
 	"syscall"
 
 	"github.com/BLXCKBXXST/sibsutis-schedule/internal/config"
+	"github.com/BLXCKBXXST/sibsutis-schedule/internal/notify"
 	"github.com/BLXCKBXXST/sibsutis-schedule/internal/schedule"
 	"github.com/BLXCKBXXST/sibsutis-schedule/internal/store"
 	"github.com/BLXCKBXXST/sibsutis-schedule/internal/watch"
@@ -72,6 +73,24 @@ func run(configPath, dataDir string) error {
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+
+	// Telegram-бот опционален: запускается только если задан токен.
+	// Он же подкидывает Notifier в воркер для рассылки diff'ов.
+	if cfg.TelegramBotToken != "" {
+		sender := notify.NewTelegramSender(cfg.TelegramBotToken)
+		bot := notify.NewBot(cfg.TelegramBotToken, sender, reg)
+		worker.WithNotifier(st, sender)
+		// botUsername нужен веб-серверу для deep-link'а на странице.
+		if username, err := bot.WhoAmI(ctx); err != nil {
+			log.Printf("notify: getMe: %v — кнопка «Подписаться» в Telegram не покажется", err)
+		} else {
+			srv.SetTelegramBotUsername(username)
+			log.Printf("notify: подключён бот @%s", username)
+		}
+		go bot.Run(ctx)
+	} else {
+		log.Printf("notify: telegram_bot_token не задан, бот отключён")
+	}
 
 	// Воркер живёт всю жизнь процесса, останавливается на ctx.Done().
 	go worker.Run(ctx)

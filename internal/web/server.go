@@ -23,12 +23,21 @@ type Server struct {
 	// onTouch вызывается из handleSchedule после успешного рендера,
 	// чтобы фоновый воркер мог запомнить «горячий» target. nil — игнорим.
 	onTouch func(model.Target)
+	// tgBotUsername — Telegram username бота для построения deep-link'а
+	// на странице расписания. Пусто — кнопка «Подписаться в Telegram»
+	// не рендерится.
+	tgBotUsername string
 }
 
 // SetTouchHook регистрирует функцию, которую сервер дёргает при каждом
 // просмотре /schedule/{type}/{q}. Используется для watch.Worker.TouchHook.
 // Безопасен для конкурентного вызова до Routes()/ListenAndServe().
 func (s *Server) SetTouchHook(h func(model.Target)) { s.onTouch = h }
+
+// SetTelegramBotUsername сообщает серверу username Telegram-бота — нужно
+// для построения ссылки «Подписаться в Telegram» на странице расписания
+// (t.me/<username>?start=<deep-link>). Пустой username — кнопка скрыта.
+func (s *Server) SetTelegramBotUsername(u string) { s.tgBotUsername = u }
 
 // New собирает Server. Шаблоны парсятся один раз при старте — на каждый
 // запрос render лишь подставляет данные.

@@ -24,6 +24,11 @@
         Подписаться в календарь
       </a>
     {{end}}
+    {{if .TelegramSubscribeURL}}
+      <a class="action" href="{{.TelegramSubscribeURL}}" title="Бот напишет, если у этого расписания что-то изменится">
+        Уведомления в Telegram
+      </a>
+    {{end}}
   </p>
 </header>
 

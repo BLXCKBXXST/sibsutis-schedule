@@ -65,6 +65,9 @@ type Config struct {
 	// WatchTTL — через сколько без просмотров target выкидывается из
 	// реестра. Дефолт 14 дней.
 	WatchTTL time.Duration
+	// TelegramBotToken — токен бота для уведомлений об изменениях
+	// расписания. Если пусто — бот и рассылка не запускаются.
+	TelegramBotToken string
 }
 
 // Load ищет и читает конфиг. Если explicitPath не пуст — используется только он.
@@ -127,6 +130,8 @@ func Load(explicitPath string) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s: watch_ttl_minutes: %w", path, err)
 	}
+
+	cfg.TelegramBotToken = strings.TrimSpace(values["telegram_bot_token"])
 
 	return cfg, nil
 }
