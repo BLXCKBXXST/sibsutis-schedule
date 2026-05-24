@@ -10,9 +10,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/BLXCKBXXST/sibsutis-schedule/internal/diff"
 	"github.com/BLXCKBXXST/sibsutis-schedule/internal/model"
 	"github.com/BLXCKBXXST/sibsutis-schedule/internal/resolve"
 	"github.com/BLXCKBXXST/sibsutis-schedule/internal/schedule"
+	"github.com/BLXCKBXXST/sibsutis-schedule/internal/store"
 )
 
 // homeData — данные для main page.
@@ -60,6 +62,38 @@ type ambiguousData struct {
 	Title   string
 	Target  model.Target
 	Options []string
+}
+
+// historyData — данные для страницы истории версий target'а.
+type historyData struct {
+	Title    string
+	Target   model.Target
+	Versions []historyRow // упорядочены от новых к старым
+}
+
+type historyRow struct {
+	ID         string
+	FetchedAt  time.Time
+	Lessons    int
+	PrevID     string // ID предыдущей (более старой) версии — для diff-ссылки; пусто у самой ранней
+	DiffNumber int    // сколько изменений до предыдущей версии (или 0, если предыдущей нет)
+}
+
+// diffData — данные для страницы сравнения двух версий.
+type diffData struct {
+	Title         string
+	Target        model.Target
+	OldID, NewID  string
+	OldAt, NewAt  time.Time
+	Sections      []diffSection // изменения, сгруппированные по виду
+	TotalChanges  int
+}
+
+// diffSection — группа изменений одного вида («отменено», «новое», …).
+type diffSection struct {
+	Title   string
+	Kind    diff.Kind
+	Changes []diff.Change
 }
 
 // errorData — данные для error.html.
@@ -313,6 +347,153 @@ func parseShowWeek(raw string, today todayHint) int {
 		return today.WeekIdx
 	}
 	return -1
+}
+
+// handleHistory отдаёт страницу со списком сохранённых версий target'а.
+// /history/{type}/{q} → templates/history.html. Для каждой версии вычисляется
+// количество отличий от предыдущей — пользователю сразу видно, в каких
+// снапшотах что-то поменялось, а в каких только переснимок.
+func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
+	typ := r.PathValue("type")
+	tt, ok := urlTypeToTargetType(typ)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	q := r.PathValue("q")
+	if q == "" {
+		http.NotFound(w, r)
+		return
+	}
+	target := model.Target{Type: tt, Query: q}
+
+	infos, err := s.store.ListLatest(target.Key(), 50)
+	if err != nil {
+		s.render.render(w, http.StatusInternalServerError, "error", errorData{
+			Title:   "Не получилось прочитать историю",
+			Message: err.Error(),
+		})
+		return
+	}
+	rows := buildHistoryRows(s.store, target.Key(), infos)
+	s.render.render(w, http.StatusOK, "history", historyData{
+		Title:    "История — " + target.Label(),
+		Target:   target,
+		Versions: rows,
+	})
+}
+
+// buildHistoryRows формирует строки для history.html: на каждой версии
+// проставляется prev и количество изменений между парами соседей.
+// Diff считается дёшево даже для 50 версий — Load(JSON-файл) + DiffSchedule.
+func buildHistoryRows(st diffStore, key string, infos []store.VersionInfo) []historyRow {
+	rows := make([]historyRow, len(infos))
+	// infos идут от новых к старым. Для каждой считаем diff с СЛЕДУЮЩЕЙ
+	// (более старой) — это будет «изменения этого снапшота относительно
+	// предыдущего по времени».
+	var loaded []model.Schedule
+	for _, v := range infos {
+		sched, err := st.Load(key, v.ID)
+		if err != nil {
+			loaded = append(loaded, model.Schedule{})
+			continue
+		}
+		loaded = append(loaded, sched)
+	}
+	for i, v := range infos {
+		r := historyRow{ID: v.ID, FetchedAt: v.FetchedAt, Lessons: v.Lessons}
+		if i+1 < len(infos) {
+			r.PrevID = infos[i+1].ID
+			r.DiffNumber = len(diff.DiffSchedule(loaded[i+1], loaded[i]))
+		}
+		rows[i] = r
+	}
+	return rows
+}
+
+// diffStore — узкий интерфейс к store.Store: нужен только для тестов
+// buildHistoryRows без подъёма всего пакета store.
+type diffStore interface {
+	Load(key, id string) (model.Schedule, error)
+}
+
+// handleDiff отрисовывает изменения между двумя версиями.
+// /history/{type}/{q}/{id1}..{id2}: id1 — более старая, id2 — более новая.
+// Порядок в URL фиксированный, чтобы постоянная ссылка имела однозначный
+// смысл «что изменилось от id1 к id2».
+func (s *Server) handleDiff(w http.ResponseWriter, r *http.Request) {
+	typ := r.PathValue("type")
+	tt, ok := urlTypeToTargetType(typ)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	q := r.PathValue("q")
+	span := r.PathValue("span")
+	id1, id2, ok := strings.Cut(span, "..")
+	if !ok || id1 == "" || id2 == "" {
+		http.NotFound(w, r)
+		return
+	}
+	target := model.Target{Type: tt, Query: q}
+
+	oldS, err := s.store.Load(target.Key(), id1)
+	if err != nil {
+		s.render.render(w, http.StatusNotFound, "error", errorData{
+			Title:   "Версия не найдена",
+			Message: "id1: " + err.Error(),
+		})
+		return
+	}
+	newS, err := s.store.Load(target.Key(), id2)
+	if err != nil {
+		s.render.render(w, http.StatusNotFound, "error", errorData{
+			Title:   "Версия не найдена",
+			Message: "id2: " + err.Error(),
+		})
+		return
+	}
+
+	changes := diff.DiffSchedule(oldS, newS)
+	s.render.render(w, http.StatusOK, "diff", diffData{
+		Title:        "Изменения — " + target.Label(),
+		Target:       target,
+		OldID:        id1,
+		NewID:        id2,
+		OldAt:        oldS.FetchedAt,
+		NewAt:        newS.FetchedAt,
+		Sections:     groupChanges(changes),
+		TotalChanges: len(changes),
+	})
+}
+
+// groupChanges раскладывает изменения по разделам в человекочитаемом порядке.
+// Пустые разделы пропускаются, чтобы шаблон не рисовал ненужные заголовки.
+func groupChanges(changes []diff.Change) []diffSection {
+	order := []struct {
+		kind  diff.Kind
+		title string
+	}{
+		{diff.KindRemoved, "Отменено"},
+		{diff.KindAdded, "Добавлено"},
+		{diff.KindTime, "Перенесено по времени"},
+		{diff.KindRoom, "Сменилась аудитория"},
+		{diff.KindTeacher, "Сменился преподаватель"},
+		{diff.KindType, "Сменился тип занятия"},
+	}
+	out := make([]diffSection, 0, len(order))
+	for _, o := range order {
+		var items []diff.Change
+		for _, c := range changes {
+			if c.Kind == o.kind {
+				items = append(items, c)
+			}
+		}
+		if len(items) > 0 {
+			out = append(out, diffSection{Title: o.title, Kind: o.kind, Changes: items})
+		}
+	}
+	return out
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

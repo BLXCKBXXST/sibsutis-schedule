@@ -1,0 +1,52 @@
+{{define "content"}}
+{{ $t := .Target }}
+{{ $type := $t.Type }}
+
+<header class="schedule-header">
+  <h2>Что изменилось — {{$t.Label}}</h2>
+  <p class="muted">
+    Между {{formatTime .OldAt}} и {{formatTime .NewAt}} —
+    {{.TotalChanges}}
+    {{if eq .TotalChanges 1}}изменение{{else}}изменений{{end}}.
+  </p>
+  <p>
+    <a href="/history/{{urlType $type}}/{{$t.Query}}">← вся история</a>
+    · <a href="/schedule/{{urlType $type}}/{{$t.Query}}">текущее расписание</a>
+  </p>
+</header>
+
+{{if not .Sections}}
+  <p class="muted">Содержимое идентично — изменений нет.</p>
+{{else}}
+  {{range .Sections}}
+    <section class="diff-section diff-{{.Kind}}">
+      <h3>{{.Title}} <span class="muted">({{len .Changes}})</span></h3>
+      <ul class="diff-list">
+        {{range .Changes}}
+          <li>
+            <strong>{{.Weekday}}, {{.WeekName}}</strong> —
+            {{if eq .Kind "added"}}
+              {{.New.Subject}} ({{.New.TimeFrom}}–{{.New.TimeTo}}, {{.New.Room}})
+            {{else if eq .Kind "removed"}}
+              {{.Old.Subject}} ({{.Old.TimeFrom}}–{{.Old.TimeTo}}, {{.Old.Room}})
+            {{else if eq .Kind "time"}}
+              {{.Old.Subject}}: <s>{{.Old.TimeFrom}}–{{.Old.TimeTo}}</s> →
+              <b>{{.New.TimeFrom}}–{{.New.TimeTo}}</b>
+            {{else if eq .Kind "room"}}
+              {{.Old.Subject}} ({{.New.TimeFrom}}–{{.New.TimeTo}}):
+              <s>{{.Old.Room}}</s> → <b>{{.New.Room}}</b>
+            {{else if eq .Kind "teacher"}}
+              {{.Old.Subject}} ({{.New.TimeFrom}}–{{.New.TimeTo}}):
+              <s>{{join ", " .Old.Teachers}}</s> →
+              <b>{{join ", " .New.Teachers}}</b>
+            {{else if eq .Kind "type"}}
+              {{.Old.Subject}} ({{.New.TimeFrom}}–{{.New.TimeTo}}):
+              <s>{{.Old.Type}}</s> → <b>{{.New.Type}}</b>
+            {{end}}
+          </li>
+        {{end}}
+      </ul>
+    </section>
+  {{end}}
+{{end}}
+{{end}}

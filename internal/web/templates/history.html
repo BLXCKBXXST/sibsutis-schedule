@@ -1,0 +1,51 @@
+{{define "content"}}
+{{ $t := .Target }}
+
+<header class="schedule-header">
+  <h2>История версий — {{$t.Label}}</h2>
+  <p class="muted">
+    Каждый снапшот сохраняется, только если расписание реально менялось.
+    Кнопка «изменения» показывает, что отличается от предыдущей версии.
+  </p>
+  <p><a href="/schedule/{{urlType $t.Type}}/{{$t.Query}}">← к текущему расписанию</a></p>
+</header>
+
+{{if not .Versions}}
+  <p class="muted">Нет сохранённых версий.</p>
+{{else}}
+  <table class="lessons history-list">
+    <thead>
+      <tr>
+        <th>Когда выгружено</th>
+        <th>Пар</th>
+        <th>Изменений</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Versions}}
+      <tr>
+        <td data-label="Когда">{{formatTime .FetchedAt}}</td>
+        <td data-label="Пар">{{.Lessons}}</td>
+        <td data-label="Изменений">
+          {{if .PrevID}}
+            {{if eq .DiffNumber 0}}
+              <span class="muted">без изменений</span>
+            {{else}}
+              {{.DiffNumber}}
+            {{end}}
+          {{else}}
+            <span class="muted">первая версия</span>
+          {{end}}
+        </td>
+        <td data-label="">
+          {{if .PrevID}}
+            <a href="/history/{{urlType $t.Type}}/{{$t.Query}}/{{.PrevID}}..{{.ID}}">показать diff</a>
+          {{end}}
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+{{end}}
+{{end}}

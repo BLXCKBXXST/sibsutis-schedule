@@ -339,6 +339,26 @@ h4 { margin: 1rem 0 0.25rem; }
   .lessons td[data-label="Пара"]::before { content: none; }
 }
 
+/* Страница diff и история */
+.diff-section {
+  margin: 1rem 0 1.5rem;
+  padding: 0.5rem 0.85rem;
+  border-radius: 8px;
+  border-left: 4px solid var(--border);
+  background: var(--row);
+}
+.diff-section h3 { margin: 0.2rem 0 0.5rem; font-size: 1rem; }
+.diff-section.diff-added    { border-left-color: #2c9a4a; }
+.diff-section.diff-removed  { border-left-color: #c33; }
+.diff-section.diff-time     { border-left-color: #d18900; }
+.diff-section.diff-room     { border-left-color: var(--accent); }
+.diff-section.diff-teacher  { border-left-color: #9a52d4; }
+.diff-section.diff-type     { border-left-color: var(--muted); }
+.diff-list { margin: 0; padding-left: 1.2rem; }
+.diff-list li { margin: 0.2rem 0; }
+
+.history-list a { text-decoration: underline; }
+
 .ambiguous-list { padding-left: 1.25rem; }
 .ambiguous-list li { margin: 0.25rem 0; }
 

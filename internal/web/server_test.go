@@ -321,6 +321,102 @@ func TestHomeShowsMyTargetFromCookie(t *testing.T) {
 	}
 }
 
+func TestHistoryRendersVersions(t *testing.T) {
+	srv := newTestServer(t, &stubFetcher{}, nil)
+	target := model.Target{Type: model.TypeStudent, Query: "ИКС-531"}
+
+	v1 := model.Schedule{
+		Target: target, Title: "ИКС-531",
+		FetchedAt: time.Date(2026, 5, 14, 9, 0, 0, 0, time.UTC),
+		Weeks: []model.Week{
+			{Name: "числитель", Days: []model.Day{
+				{Weekday: "Понедельник", Lessons: []model.Lesson{
+					{Number: 1, TimeFrom: "08:00", TimeTo: "09:35", Subject: "Физика", Room: "а.101"},
+				}},
+			}},
+		},
+	}
+	v2 := v1
+	v2.FetchedAt = time.Date(2026, 5, 15, 9, 0, 0, 0, time.UTC)
+	d := append([]model.Day(nil), v1.Weeks[0].Days...)
+	d[0] = model.Day{Weekday: "Понедельник", Lessons: []model.Lesson{
+		{Number: 1, TimeFrom: "08:00", TimeTo: "09:35", Subject: "Физика", Room: "а.202"}, // сменилась аудитория
+	}}
+	v2.Weeks = []model.Week{{Name: "числитель", Days: d}}
+
+	if _, _, err := srv.store.Save(target.Key(), v1); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := srv.store.Save(target.Key(), v2); err != nil {
+		t.Fatal(err)
+	}
+
+	ts := httptest.NewServer(srv.Routes())
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/history/group/" + url.PathEscape("ИКС-531"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		t.Fatalf("status = %d, body=%s", resp.StatusCode, body)
+	}
+	if !strings.Contains(string(body), "История версий") {
+		t.Errorf("нет заголовка истории: %s", body)
+	}
+	if !strings.Contains(string(body), "показать diff") {
+		t.Errorf("нет ссылки на diff: %s", body)
+	}
+}
+
+func TestDiffRenders(t *testing.T) {
+	srv := newTestServer(t, &stubFetcher{}, nil)
+	target := model.Target{Type: model.TypeStudent, Query: "ИКС-531"}
+
+	v1 := model.Schedule{
+		Target: target, FetchedAt: time.Date(2026, 5, 14, 9, 0, 0, 0, time.UTC),
+		Weeks: []model.Week{
+			{Name: "числитель", Days: []model.Day{
+				{Weekday: "Понедельник", Lessons: []model.Lesson{
+					{Number: 1, TimeFrom: "08:00", TimeTo: "09:35", Subject: "Физика", Room: "а.101"},
+				}},
+			}},
+		},
+	}
+	v2 := model.Schedule{
+		Target: target, FetchedAt: time.Date(2026, 5, 15, 9, 0, 0, 0, time.UTC),
+		Weeks: []model.Week{
+			{Name: "числитель", Days: []model.Day{
+				{Weekday: "Понедельник", Lessons: []model.Lesson{
+					{Number: 1, TimeFrom: "08:00", TimeTo: "09:35", Subject: "Физика", Room: "а.999"},
+				}},
+			}},
+		},
+	}
+	_, id1, _ := srv.store.Save(target.Key(), v1)
+	_, id2, _ := srv.store.Save(target.Key(), v2)
+
+	ts := httptest.NewServer(srv.Routes())
+	defer ts.Close()
+	resp, err := http.Get(ts.URL + "/history/group/" + url.PathEscape("ИКС-531") + "/" + id1 + ".." + id2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		t.Fatalf("status = %d, body=%s", resp.StatusCode, body)
+	}
+	if !strings.Contains(string(body), "Сменилась аудитория") {
+		t.Errorf("нет раздела «Сменилась аудитория»: %s", body)
+	}
+	if !strings.Contains(string(body), "а.101") || !strings.Contains(string(body), "а.999") {
+		t.Errorf("в diff нет старого/нового room: %s", body)
+	}
+}
+
 func TestNetworkErrorFallsBackToCache(t *testing.T) {
 	srv := newTestServer(t, &stubFetcher{err: errors.New("боже сайт лёг")}, nil)
 	// положим в store кэш для target

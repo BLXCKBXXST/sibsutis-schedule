@@ -93,7 +93,7 @@ func newRenderer() (*renderer, error) {
 	}
 
 	pages := map[string]*template.Template{}
-	for _, name := range []string{"home", "schedule", "ambiguous", "error"} {
+	for _, name := range []string{"home", "schedule", "ambiguous", "error", "history", "diff"} {
 		t, err := template.New("base.html").Funcs(funcs).ParseFS(templatesFS,
 			"templates/base.html", "templates/"+name+".html")
 		if err != nil {

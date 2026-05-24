@@ -129,6 +129,45 @@ func TestSaveNewVersionOnChange(t *testing.T) {
 	}
 }
 
+func TestListLatest(t *testing.T) {
+	st, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := testTarget.Key()
+	// Сохраняем 3 различные версии (даты разные → разный hash → dedup пропустит).
+	for i, subj := range []string{"Матан", "Физика", "Программирование"} {
+		ts := time.Date(2026, 5, 14, 10+i, 0, 0, 0, time.UTC)
+		if _, _, err := st.Save(key, sampleSchedule(subj, ts)); err != nil {
+			t.Fatalf("save %d: %v", i, err)
+		}
+	}
+
+	all, err := st.ListLatest(key, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 3 {
+		t.Fatalf("ListLatest(0) = %d, want 3", len(all))
+	}
+	// Новейшая — первой; FetchedAt идёт по убыванию.
+	if !all[0].FetchedAt.After(all[1].FetchedAt) || !all[1].FetchedAt.After(all[2].FetchedAt) {
+		t.Errorf("порядок FetchedAt от новых к старым нарушен: %v / %v / %v",
+			all[0].FetchedAt, all[1].FetchedAt, all[2].FetchedAt)
+	}
+
+	top2, err := st.ListLatest(key, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(top2) != 2 {
+		t.Errorf("ListLatest(2) = %d, want 2", len(top2))
+	}
+	if !top2[0].FetchedAt.Equal(all[0].FetchedAt) {
+		t.Errorf("ListLatest(2)[0] != ListLatest(0)[0]")
+	}
+}
+
 func TestHistoryPerTargetIsolated(t *testing.T) {
 	st, err := New(t.TempDir())
 	if err != nil {

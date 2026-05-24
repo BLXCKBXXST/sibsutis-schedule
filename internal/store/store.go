@@ -186,6 +186,34 @@ func (s *Store) List(key string) ([]VersionInfo, error) {
 	return infos, nil
 }
 
+// ListLatest возвращает последние n версий target'а key в порядке от новых
+// к старым. n<=0 → без лимита (все версии). Удобно для страницы истории,
+// где обычно нужны только последние 10–20 снапшотов.
+func (s *Store) ListLatest(key string, n int) ([]VersionInfo, error) {
+	ids, err := s.ids(key)
+	if err != nil {
+		return nil, err
+	}
+	// ids() уже отсортированы по возрастанию — обходим с конца.
+	if n <= 0 || n > len(ids) {
+		n = len(ids)
+	}
+	infos := make([]VersionInfo, 0, n)
+	for i := len(ids) - 1; i >= 0 && len(infos) < n; i-- {
+		sched, err := s.Load(key, ids[i])
+		if err != nil {
+			return nil, err
+		}
+		infos = append(infos, VersionInfo{
+			ID:        ids[i],
+			FetchedAt: sched.FetchedAt,
+			Title:     sched.Title,
+			Lessons:   sched.LessonCount(),
+		})
+	}
+	return infos, nil
+}
+
 // Targets возвращает сводку по всем target'ам, для которых есть история.
 func (s *Store) Targets() ([]TargetSummary, error) {
 	entries, err := os.ReadDir(s.historyDir)
