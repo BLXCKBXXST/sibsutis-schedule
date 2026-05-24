@@ -21,9 +21,14 @@
   <p class="muted">Пар не найдено.</p>
 {{else}}
   <nav class="week-tabs" aria-label="Выбор недели">
-    <a class="week-tab{{if eq .ShowWeek 0}} is-active{{end}}" href="?week=0">Числитель</a>
-    <a class="week-tab{{if eq .ShowWeek 1}} is-active{{end}}" href="?week=1">Знаменатель</a>
-    <a class="week-tab{{if eq .ShowWeek -1}} is-active{{end}}" href="?week=all">Обе</a>
+    {{range $.WeekOrder}}
+      {{ $wi := . }}
+      <a class="week-tab{{if eq $.ShowWeek $wi}} is-active{{end}}{{if eq $wi $.CurrentWeek}} is-current{{end}}"
+         href="?week={{$wi}}">
+        {{weekRange (index $.WeekStarts $wi)}}{{if eq $wi $.CurrentWeek}} · сейчас{{end}}
+      </a>
+    {{end}}
+    <a class="week-tab{{if eq $.ShowWeek -1}} is-active{{end}}" href="?week=all">Обе</a>
   </nav>
   {{range $wi, $w := $s.Weeks}}
     {{if or (eq $.ShowWeek -1) (eq $.ShowWeek $wi)}}

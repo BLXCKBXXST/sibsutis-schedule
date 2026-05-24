@@ -37,6 +37,15 @@ type scheduleData struct {
 	//   -1    — обе подряд (старый layout).
 	// По умолчанию (URL без ?week=) подставляется активная неделя из Today.
 	ShowWeek int
+	// WeekStarts[wi] — понедельник ближайшей календарной недели,
+	// соответствующей Weeks[wi]. Используется для рендера дат в табах.
+	WeekStarts [2]time.Time
+	// WeekOrder — порядок отображения недель в табах: первой идёт
+	// текущая неделя, второй — следующая.
+	WeekOrder [2]int
+	// CurrentWeek — индекс текущей по календарю недели (нужен шаблону,
+	// чтобы пометить таб «сегодня» независимо от выбранной ShowWeek).
+	CurrentWeek int
 }
 
 // ambiguousData — данные для страницы «уточни запрос».
@@ -165,6 +174,8 @@ func (s *Server) handleSchedule(w http.ResponseWriter, r *http.Request) {
 	hl := highlights(result.Schedule, now)
 	today := computeTodayHint(result.Schedule, now)
 	showWeek := parseShowWeek(r.URL.Query().Get("week"), today)
+	starts, current := weekStarts(now)
+	order := [2]int{current, 1 - current}
 	w.Header().Set("Cache-Control", "public, max-age=300")
 	s.render.render(w, http.StatusOK, "schedule", scheduleData{
 		Title:        target.Label() + " — расписание",
@@ -178,7 +189,27 @@ func (s *Server) handleSchedule(w http.ResponseWriter, r *http.Request) {
 		NextLessonAt: hl.NextAt,
 		ServerNow:    now,
 		ShowWeek:     showWeek,
+		WeekStarts:   starts,
+		WeekOrder:    order,
+		CurrentWeek:  current,
 	})
+}
+
+// weekStarts возвращает понедельники двух ближайших календарных недель и
+// индекс той, что соответствует «сейчас». starts[wi] — понедельник недели
+// чётности wi; current — wi сегодняшней недели (0=числитель, 1=знаменатель).
+func weekStarts(now time.Time) (starts [2]time.Time, current int) {
+	now = now.In(krskLocation)
+	thisMon := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, krskLocation)
+	wd := int(thisMon.Weekday())
+	if wd == 0 {
+		wd = 7
+	}
+	thisMon = thisMon.AddDate(0, 0, -(wd - 1))
+	current = model.WeekParity(thisMon, time.Time{})
+	starts[current] = thisMon
+	starts[1-current] = thisMon.AddDate(0, 0, 7)
+	return starts, current
 }
 
 // parseShowWeek разбирает ?week=. Пустое или невалидное значение → активная

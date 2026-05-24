@@ -76,6 +76,20 @@ func newRenderer() (*renderer, error) {
 			}
 			return ""
 		},
+		// weekRange форматирует семидневный диапазон с понедельника
+		// start в виде «25–31 мая» или «28 мая – 3 июня».
+		"weekRange": func(start time.Time) string {
+			if start.IsZero() {
+				return ""
+			}
+			end := start.AddDate(0, 0, 6)
+			if start.Month() == end.Month() {
+				return fmt.Sprintf("%d–%d %s", start.Day(), end.Day(), russianMonthGen(start.Month()))
+			}
+			return fmt.Sprintf("%d %s – %d %s",
+				start.Day(), russianMonthGen(start.Month()),
+				end.Day(), russianMonthGen(end.Month()))
+		},
 	}
 
 	pages := map[string]*template.Template{}
@@ -103,6 +117,38 @@ func (r *renderer) render(w http.ResponseWriter, status int, name string, data a
 	if err := t.ExecuteTemplate(w, "base.html", data); err != nil {
 		log.Printf("render %s: %v", name, err)
 	}
+}
+
+// russianMonthGen возвращает название месяца в родительном падеже:
+// «мая», «июня», «октября» — для конструкций «25 мая», «28 мая – 3 июня».
+func russianMonthGen(m time.Month) string {
+	switch m {
+	case time.January:
+		return "января"
+	case time.February:
+		return "февраля"
+	case time.March:
+		return "марта"
+	case time.April:
+		return "апреля"
+	case time.May:
+		return "мая"
+	case time.June:
+		return "июня"
+	case time.July:
+		return "июля"
+	case time.August:
+		return "августа"
+	case time.September:
+		return "сентября"
+	case time.October:
+		return "октября"
+	case time.November:
+		return "ноября"
+	case time.December:
+		return "декабря"
+	}
+	return ""
 }
 
 // staticHandler возвращает обработчик для embed-вшитой папки static/.
