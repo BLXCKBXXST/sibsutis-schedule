@@ -76,6 +76,11 @@ func newRenderer() (*renderer, error) {
 			}
 			return ""
 		},
+		// safeURL помечает строку как уже-безопасный URL (template.URL).
+		// Нужно для webcal:// — html/template не знает эту схему и
+		// заменяет href на «#ZgotmplZ» из соображений безопасности.
+		// Используется только с серверно-сгенерированными ссылками.
+		"safeURL": func(s string) template.URL { return template.URL(s) },
 		// weekRange форматирует семидневный диапазон с понедельника
 		// start в виде «25–31 мая» или «28 мая – 3 июня».
 		"weekRange": func(start time.Time) string {
