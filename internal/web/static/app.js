@@ -110,10 +110,18 @@
     });
   }
 
+  // Регистрируем service worker для оффлайн-просмотра. Игнорируем
+  // ошибки регистрации — это just-nice-to-have, не критичная фича.
+  function registerSW() {
+    if (!('serviceWorker' in navigator)) return;
+    navigator.serviceWorker.register('/sw.js').catch(function () {});
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
     tickTimer();
     setInterval(tickTimer, 30000);
     scrollToToday();
     wireSearchAutocomplete();
+    registerSW();
   });
 })();

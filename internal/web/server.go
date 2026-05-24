@@ -72,6 +72,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/history/{type}/{q}", s.handleAPIHistory)
 	mux.HandleFunc("GET /api/history/{type}/{q}/{id}", s.handleAPIHistoryVersion)
 	mux.HandleFunc("GET /healthz", s.handleHealth)
+	mux.HandleFunc("GET /sw.js", s.handleServiceWorker)
 	mux.Handle("GET /static/", http.StripPrefix("/static/", staticHandler()))
 	return s.withMiddleware(mux)
 }

@@ -419,6 +419,23 @@ func icsFilename(t model.Target) string {
 	return "sibsutis-" + key + ".ics"
 }
 
+// handleServiceWorker отдаёт static/sw.js под корневым путём /sw.js,
+// чтобы у service worker'а получился scope = "/" (если файл доступен
+// только через /static/sw.js, scope ограничивается /static/ и SW не
+// сможет перехватывать запросы к расписанию). Альтернатива — слать
+// заголовок Service-Worker-Allowed: /, но проще обслужить файл из корня.
+func (s *Server) handleServiceWorker(w http.ResponseWriter, _ *http.Request) {
+	b, err := staticFS.ReadFile("static/sw.js")
+	if err != nil {
+		http.Error(w, "sw.js missing", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+	w.Header().Set("Service-Worker-Allowed", "/")
+	w.Header().Set("Cache-Control", "no-cache")
+	_, _ = w.Write(b)
+}
+
 // handleICSSubscribe — подписной webcal-эндпоинт. URL вида /ics/{token}
 // где token подписан HMAC от секрета сервера. Клиент-календарь (Google,
 // Apple, Outlook) ходит сюда раз в час и автоматически подтягивает

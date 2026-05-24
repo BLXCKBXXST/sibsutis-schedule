@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="sibsutis-schedule">
+  <rect width="512" height="512" rx="96" fill="#2563eb"/>
+  <!-- Силуэт настольного календаря: лист с двумя «зубчиками» сверху. -->
+  <rect x="96" y="128" width="320" height="320" rx="32" fill="#ffffff"/>
+  <rect x="96" y="128" width="320" height="72" rx="32" fill="#1e40af"/>
+  <rect x="160" y="96" width="32" height="80" rx="12" fill="#1e293b"/>
+  <rect x="320" y="96" width="32" height="80" rx="12" fill="#1e293b"/>
+  <!-- Три «строки» внутри листа, имитирующие пары. -->
+  <rect x="144" y="240" width="224" height="24" rx="8" fill="#cbd5e1"/>
+  <rect x="144" y="296" width="184" height="24" rx="8" fill="#cbd5e1"/>
+  <rect x="144" y="352" width="224" height="24" rx="8" fill="#cbd5e1"/>
+</svg>

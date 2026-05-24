@@ -3,12 +3,20 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#2563eb">
   <title>{{.Title}}</title>
   <link rel="stylesheet" href="/static/app.css">
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="icon" type="image/svg+xml" href="/static/icon.svg">
+  <link rel="icon" type="image/png" sizes="192x192" href="/static/icon-192.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/icon-apple.png">
 </head>
 <body>
   <header class="site-header">
-    <a class="brand" href="/"><strong>📅 Расписание SibSUTI</strong></a>
+    <a class="brand" href="/">
+      <img src="/static/icon.svg" alt="" width="24" height="24" class="brand-icon">
+      <strong>Расписание SibSUTI</strong>
+    </a>
   </header>
   <main class="container">
     {{template "content" .}}
