@@ -50,9 +50,70 @@
     today.scrollIntoView({behavior: 'instant', block: 'start'});
   }
 
+  // --- Автокомплит в поиске на главной --------------------------------
+  // Без зависимостей, через нативный <datalist>. На каждом изменении ввода
+  // debounce 250 мс, потом fetch к /api/suggest и переотрисовка <option>.
+  function wireSearchAutocomplete() {
+    var input = document.getElementById('search-q');
+    var list = document.getElementById('search-suggest');
+    if (!input || !list) return;
+
+    var typeRadios = document.querySelectorAll('input[name="type"]');
+    function currentType() {
+      for (var i = 0; i < typeRadios.length; i++) {
+        if (typeRadios[i].checked) return typeRadios[i].value;
+      }
+      return 'group';
+    }
+
+    var timer = null;
+    var lastKey = '';
+    var ctrl = null;
+
+    function fetchSuggest() {
+      var q = input.value.trim();
+      var typ = currentType();
+      var key = typ + '|' + q.toLowerCase();
+      if (q.length < 2 || key === lastKey) return;
+      lastKey = key;
+
+      if (ctrl) ctrl.abort();
+      ctrl = new AbortController();
+      var url = '/api/suggest?type=' + encodeURIComponent(typ) +
+                '&q=' + encodeURIComponent(q);
+      fetch(url, {signal: ctrl.signal})
+        .then(function (r) { return r.ok ? r.json() : []; })
+        .then(function (items) {
+          list.innerHTML = '';
+          for (var i = 0; i < items.length; i++) {
+            var o = document.createElement('option');
+            o.value = items[i].text;
+            list.appendChild(o);
+          }
+        })
+        .catch(function () { /* abort или сеть — молча */ });
+    }
+
+    function schedule() {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(fetchSuggest, 250);
+    }
+
+    input.addEventListener('input', schedule);
+    // Смена типа сбрасывает список и логику кэша.
+    typeRadios.forEach(function (r) {
+      r.addEventListener('change', function () {
+        list.innerHTML = '';
+        lastKey = '';
+        if (input.value.trim().length >= 2) schedule();
+      });
+    });
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
     tickTimer();
     setInterval(tickTimer, 30000);
     scrollToToday();
+    wireSearchAutocomplete();
   });
 })();

@@ -14,10 +14,11 @@ import (
 
 // Server — HTTP-сервер расписания SibSUTI.
 type Server struct {
-	cfg    *config.Config
-	svc    *schedule.Service
-	store  *store.Store
-	render *renderer
+	cfg       *config.Config
+	svc       *schedule.Service
+	store     *store.Store
+	render    *renderer
+	suggester *suggester
 }
 
 // New собирает Server. Шаблоны парсятся один раз при старте — на каждый
@@ -27,7 +28,13 @@ func New(cfg *config.Config, svc *schedule.Service, st *store.Store) (*Server, e
 	if err != nil {
 		return nil, err
 	}
-	return &Server{cfg: cfg, svc: svc, store: st, render: r}, nil
+	return &Server{
+		cfg:       cfg,
+		svc:       svc,
+		store:     st,
+		render:    r,
+		suggester: newSuggester(cfg),
+	}, nil
 }
 
 // Routes собирает маршруты и оборачивает их middleware.
@@ -37,6 +44,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /{$}", s.handleHome)
 	mux.HandleFunc("POST /search", s.handleSearch)
 	mux.HandleFunc("GET /schedule/{type}/{q}", s.handleSchedule)
+	mux.HandleFunc("POST /forget", s.handleForget)
+	mux.HandleFunc("GET /api/suggest", s.handleSuggest)
 	mux.HandleFunc("GET /healthz", s.handleHealth)
 	mux.Handle("GET /static/", http.StripPrefix("/static/", staticHandler()))
 	return s.withMiddleware(mux)

@@ -110,6 +110,29 @@ h4 { margin: 1rem 0 0.25rem; }
   font-weight: 500;
 }
 .cta:hover { text-decoration: none; opacity: 0.92; }
+.cta-secondary {
+  background: var(--row);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+.my-target {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.forget-form { margin: 0; }
+.link-button {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+  text-decoration: underline;
+}
+.link-button:hover { color: var(--fg); }
 
 .search { margin-top: 2rem; }
 .search fieldset {

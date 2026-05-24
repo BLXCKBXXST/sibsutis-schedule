@@ -197,6 +197,130 @@ func TestScheduleAmbiguousRenders(t *testing.T) {
 	}
 }
 
+func TestSuggestShortQuery(t *testing.T) {
+	srv := newTestServer(t, &stubFetcher{}, nil)
+	ts := httptest.NewServer(srv.Routes())
+	defer ts.Close()
+
+	// Один символ — меньше suggestMinQ, сайт не дёргаем, отдаём [].
+	resp, err := http.Get(ts.URL + "/api/suggest?type=group&q=" + url.QueryEscape("А"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Errorf("status = %d, want 200", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		t.Errorf("Content-Type = %q, want application/json…", ct)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if got := strings.TrimSpace(string(body)); got != "[]" {
+		t.Errorf("body = %q, want []", got)
+	}
+}
+
+func TestSuggestUnknownType(t *testing.T) {
+	srv := newTestServer(t, &stubFetcher{}, nil)
+	ts := httptest.NewServer(srv.Routes())
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/api/suggest?type=ufo&q=" + url.QueryEscape("Иванов"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if got := strings.TrimSpace(string(body)); got != "[]" {
+		t.Errorf("body = %q, want []", got)
+	}
+}
+
+func TestScheduleSetsMyTargetCookie(t *testing.T) {
+	srv := newTestServer(t, &stubFetcher{}, nil)
+	ts := httptest.NewServer(srv.Routes())
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/schedule/group/" + url.PathEscape("ИКС-531"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+	var got *http.Cookie
+	for _, c := range resp.Cookies() {
+		if c.Name == "my_target" {
+			got = c
+		}
+	}
+	if got == nil {
+		t.Fatal("Set-Cookie my_target отсутствует")
+	}
+	if !strings.HasPrefix(got.Value, "group/") {
+		t.Errorf("cookie value = %q, ожидался префикс 'group/'", got.Value)
+	}
+	if got.HttpOnly != true {
+		t.Errorf("cookie должен быть HttpOnly")
+	}
+	if got.SameSite != http.SameSiteLaxMode {
+		t.Errorf("SameSite = %v, want Lax", got.SameSite)
+	}
+}
+
+func TestForgetClearsCookieAndRedirects(t *testing.T) {
+	srv := newTestServer(t, &stubFetcher{}, nil)
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+	ts := httptest.NewServer(srv.Routes())
+	defer ts.Close()
+
+	resp, err := client.Post(ts.URL+"/forget", "application/x-www-form-urlencoded", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Errorf("status = %d, want 303", resp.StatusCode)
+	}
+	if loc := resp.Header.Get("Location"); loc != "/" {
+		t.Errorf("Location = %q, want /", loc)
+	}
+	// Cookie с пустым value + MaxAge<=0.
+	cleared := false
+	for _, c := range resp.Cookies() {
+		if c.Name == "my_target" && c.MaxAge < 0 {
+			cleared = true
+		}
+	}
+	if !cleared {
+		t.Error("cookie my_target не был сброшен")
+	}
+}
+
+func TestHomeShowsMyTargetFromCookie(t *testing.T) {
+	srv := newTestServer(t, &stubFetcher{}, nil)
+	ts := httptest.NewServer(srv.Routes())
+	defer ts.Close()
+
+	req, _ := http.NewRequest("GET", ts.URL+"/", nil)
+	req.AddCookie(&http.Cookie{Name: "my_target", Value: "teacher/" + url.PathEscape("Иванов И.И.")})
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), "Открыть последнее") {
+		t.Errorf("на главной нет ссылки «Открыть последнее»: %s", body)
+	}
+	if !strings.Contains(string(body), "Иванов И.И.") {
+		t.Errorf("на главной нет ФИО из cookie: %s", body)
+	}
+}
+
 func TestNetworkErrorFallsBackToCache(t *testing.T) {
 	srv := newTestServer(t, &stubFetcher{err: errors.New("боже сайт лёг")}, nil)
 	// положим в store кэш для target

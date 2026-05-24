@@ -9,6 +9,17 @@
   </p>
 {{end}}
 
+{{with .MyTarget}}
+  <p class="my-target">
+    <a class="cta cta-secondary" href="/schedule/{{urlType .Type}}/{{.Query}}">
+      ↩ Открыть последнее ({{.Label}})
+    </a>
+    <form method="post" action="/forget" class="forget-form">
+      <button type="submit" class="link-button" aria-label="Забыть последний выбор">забыть</button>
+    </form>
+  </p>
+{{end}}
+
 <section class="search">
   <h2>Найти расписание</h2>
   <form method="post" action="/search">
@@ -19,7 +30,10 @@
       <label><input type="radio" name="type" value="room"> аудиторию</label>
     </fieldset>
     <div class="row">
-      <input type="text" name="q" placeholder="напр. ИКС-531, Иванов, 1-101" autofocus required>
+      <input id="search-q" type="text" name="q" list="search-suggest"
+             placeholder="напр. ИКС-531, Иванов, 1-101"
+             autocomplete="off" autofocus required>
+      <datalist id="search-suggest"></datalist>
       <button type="submit">Показать</button>
     </div>
   </form>

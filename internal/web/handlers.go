@@ -1,8 +1,10 @@
 package web
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -17,8 +19,13 @@ import (
 type homeData struct {
 	Title         string
 	Notice        string
-	DefaultTarget *model.Target
+	DefaultTarget *model.Target // фиксированный target из config.txt
+	MyTarget      *model.Target // запомненный из cookie my_target (если задан)
 }
+
+// myTargetCookie — имя cookie, в которой запоминается последний просмотренный
+// target. Срок жизни — 1 год, SameSite=Lax, HttpOnly (фронту читать незачем).
+const myTargetCookie = "my_target"
 
 // scheduleData — данные для страницы расписания.
 type scheduleData struct {
@@ -85,12 +92,81 @@ func targetTypeToURL(t model.TargetType) string {
 
 func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 	notice := r.URL.Query().Get("notice")
-	w.Header().Set("Cache-Control", "public, max-age=60")
+	// Куки персональные — кэширование на дороге между пользователями
+	// испортит «Моё расписание». Сейчас сайт работает без CDN, поэтому
+	// просто запрещаем shared-кэш.
+	w.Header().Set("Cache-Control", "private, max-age=60")
 	s.render.render(w, http.StatusOK, "home", homeData{
 		Title:         "Расписание SibSUTI",
 		Notice:        notice,
 		DefaultTarget: s.cfg.DefaultTarget,
+		MyTarget:      readMyTargetCookie(r, s.cfg.DefaultTarget),
 	})
+}
+
+// readMyTargetCookie возвращает запомненный из cookie target.
+// Cookie с тем же target, что и DefaultTarget — игнорируется (показывать одну
+// и ту же ссылку дважды бессмысленно). Невалидное содержимое — nil без ошибки.
+func readMyTargetCookie(r *http.Request, def *model.Target) *model.Target {
+	c, err := r.Cookie(myTargetCookie)
+	if err != nil || c.Value == "" {
+		return nil
+	}
+	typ, q, ok := strings.Cut(c.Value, "/")
+	if !ok {
+		return nil
+	}
+	tt, ok := urlTypeToTargetType(typ)
+	if !ok {
+		return nil
+	}
+	query, err := url.PathUnescape(q)
+	if err != nil || strings.TrimSpace(query) == "" {
+		return nil
+	}
+	t := &model.Target{Type: tt, Query: query}
+	if def != nil && def.Type == t.Type && strings.EqualFold(def.Query, t.Query) {
+		return nil
+	}
+	return t
+}
+
+// writeMyTargetCookie запоминает target на 1 год. Cookie HttpOnly+SameSite=Lax,
+// Secure ставится только когда запрос пришёл по HTTPS — за Caddy это видно
+// через X-Forwarded-Proto / r.TLS.
+func writeMyTargetCookie(w http.ResponseWriter, r *http.Request, t model.Target) {
+	value := targetTypeToURL(t.Type) + "/" + url.PathEscape(t.Query)
+	http.SetCookie(w, &http.Cookie{
+		Name:     myTargetCookie,
+		Value:    value,
+		Path:     "/",
+		MaxAge:   60 * 60 * 24 * 365,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   isHTTPS(r),
+	})
+}
+
+// clearMyTargetCookie сбрасывает cookie — MaxAge=-1.
+func clearMyTargetCookie(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     myTargetCookie,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   isHTTPS(r),
+	})
+}
+
+// isHTTPS возвращает true, если запрос фактически пришёл по https — учитывая
+// reverse-proxy (Caddy ставит X-Forwarded-Proto).
+func isHTTPS(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	return strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
 }
 
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
@@ -170,6 +246,10 @@ func (s *Server) handleSchedule(w http.ResponseWriter, r *http.Request) {
 		cacheReason = "из кэша"
 	}
 
+	// Запомнили выбор пользователя — главная теперь покажет ссылку
+	// «Моё расписание (запомнено)».
+	writeMyTargetCookie(w, r, target)
+
 	now := time.Now().In(krskLocation)
 	hl := highlights(result.Schedule, now)
 	today := computeTodayHint(result.Schedule, now)
@@ -238,6 +318,44 @@ func parseShowWeek(raw string, today todayHint) int {
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintln(w, "OK")
+}
+
+// handleForget стирает cookie my_target и редиректит на главную. Только POST,
+// чтобы случайные ссылки/префетчи не сбрасывали выбор.
+func (s *Server) handleForget(w http.ResponseWriter, r *http.Request) {
+	clearMyTargetCookie(w, r)
+	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+// handleSuggest отдаёт JSON-список вариантов для автокомплита поиска.
+// GET /api/suggest?type=group|teacher|room&q=<подстрока>. Запросы короче
+// suggestMinQ возвращают пустой массив без обращения к сайту. Сетевые
+// ошибки — тоже пустой массив (фронт не должен лопаться от падения
+// my.sibsutis.ru), факт ошибки попадает в лог.
+func (s *Server) handleSuggest(w http.ResponseWriter, r *http.Request) {
+	typ := r.URL.Query().Get("type")
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+
+	if _, ok := urlTypeToTargetType(typ); !ok || len([]rune(q)) < suggestMinQ {
+		writeJSON(w, []suggestItem{})
+		return
+	}
+
+	items, err := s.suggester.suggest(typ, q)
+	if err != nil {
+		log.Printf("suggest %s %q: %v", typ, q, err)
+		writeJSON(w, []suggestItem{})
+		return
+	}
+	w.Header().Set("Cache-Control", "public, max-age=60")
+	writeJSON(w, items)
+}
+
+func writeJSON(w http.ResponseWriter, v any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		log.Printf("write json: %v", err)
+	}
 }
 
 // redirectHome — редирект на / с notice в query.

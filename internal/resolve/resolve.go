@@ -39,44 +39,53 @@ type Match struct {
 	Text string
 }
 
-// Resolve ищет target через AJAX-эндпоинт соответствующего типа.
-// scheduleBaseURL нужен только чтобы взять схему и хост сайта.
+// Resolve ищет target через AJAX-эндпоинт соответствующего типа и сводит
+// результат к единственному совпадению или типизированной ошибке
+// (ErrNotFound / ErrAmbiguous). scheduleBaseURL нужен только чтобы взять
+// схему и хост сайта.
 func Resolve(client *http.Client, scheduleBaseURL string, t model.Target) (Match, error) {
+	matches, meta, err := Search(client, scheduleBaseURL, t)
+	if err != nil {
+		return Match{}, err
+	}
+	return pick(matches, t, meta)
+}
+
+// Search возвращает все совпадения по запросу без сужения к одному.
+// Используется автокомплитом в веб-фронте.
+func Search(client *http.Client, scheduleBaseURL string, t model.Target) ([]Match, model.TypeMeta, error) {
 	meta, ok := t.Meta()
 	if !ok {
-		return Match{}, fmt.Errorf("неизвестный тип расписания: %q", t.Type)
+		return nil, model.TypeMeta{}, fmt.Errorf("неизвестный тип расписания: %q", t.Type)
 	}
-
 	endpoint, err := buildAjaxURL(scheduleBaseURL, meta, t.Query)
 	if err != nil {
-		return Match{}, err
+		return nil, meta, err
 	}
-
 	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
 	if err != nil {
-		return Match{}, err
+		return nil, meta, err
 	}
 	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("X-Requested-With", "XMLHttpRequest")
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return Match{}, fmt.Errorf("запрос к %s: %w", meta.AjaxPath, err)
+		return nil, meta, fmt.Errorf("запрос к %s: %w", meta.AjaxPath, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return Match{}, fmt.Errorf("эндпоинт поиска ответил %s", resp.Status)
+		return nil, meta, fmt.Errorf("эндпоинт поиска ответил %s", resp.Status)
 	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return Match{}, fmt.Errorf("чтение ответа поиска: %w", err)
+		return nil, meta, fmt.Errorf("чтение ответа поиска: %w", err)
 	}
-
 	matches, err := parseResults(body)
 	if err != nil {
-		return Match{}, err
+		return nil, meta, err
 	}
-	return pick(matches, t, meta)
+	return matches, meta, nil
 }
 
 // pick выбирает единственное совпадение или возвращает типизированную ошибку.
