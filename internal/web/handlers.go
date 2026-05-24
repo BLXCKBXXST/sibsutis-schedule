@@ -174,7 +174,13 @@ func (s *Server) handleSchedule(w http.ResponseWriter, r *http.Request) {
 	hl := highlights(result.Schedule, now)
 	today := computeTodayHint(result.Schedule, now)
 	showWeek := parseShowWeek(r.URL.Query().Get("week"), today)
-	starts, current := weekStarts(now)
+	starts, calendarParity := weekStarts(now)
+	// «Сейчас» в табах = неделя ближайшего учебного дня. На выходных это
+	// будущая неделя (понедельник через 1-2 дня), не уходящая ISO-неделя.
+	current := calendarParity
+	if today.Found {
+		current = today.WeekIdx
+	}
 	order := [2]int{current, 1 - current}
 	w.Header().Set("Cache-Control", "public, max-age=300")
 	s.render.render(w, http.StatusOK, "schedule", scheduleData{
