@@ -45,6 +45,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /search", s.handleSearch)
 	mux.HandleFunc("GET /schedule/{type}/{q}", s.handleSchedule)
 	mux.HandleFunc("GET /calendar/{type}/{q}", s.handleScheduleICS)
+	mux.HandleFunc("GET /ics/{token}", s.handleICSSubscribe)
 	mux.HandleFunc("GET /history/{type}/{q}", s.handleHistory)
 	mux.HandleFunc("GET /history/{type}/{q}/{span}", s.handleDiff)
 	mux.HandleFunc("POST /forget", s.handleForget)

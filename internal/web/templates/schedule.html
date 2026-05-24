@@ -19,6 +19,11 @@
     <a class="action" href="/calendar/{{urlType $type}}/{{.Target.Query}}">
       Скачать в календарь (.ics)
     </a>
+    {{if .ICSWebcalURL}}
+      <a class="action" href="{{.ICSWebcalURL}}" title="Подписка обновляется автоматически — каждый час календарь подтягивает новую версию">
+        Подписаться в календарь
+      </a>
+    {{end}}
   </p>
 </header>
 
