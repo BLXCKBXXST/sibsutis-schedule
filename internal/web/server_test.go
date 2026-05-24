@@ -417,6 +417,106 @@ func TestDiffRenders(t *testing.T) {
 	}
 }
 
+func TestAPIScheduleRendersJSON(t *testing.T) {
+	srv := newTestServer(t, &stubFetcher{}, nil)
+	ts := httptest.NewServer(srv.Routes())
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/api/schedule/group/" + url.PathEscape("ИКС-531"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		t.Errorf("Content-Type = %q", ct)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), `"weeks"`) {
+		t.Errorf("в ответе нет weeks: %s", body)
+	}
+	if strings.Contains(string(body), `"raw_html"`) {
+		t.Errorf("в JSON оказался raw_html: %s", body)
+	}
+}
+
+func TestAPIScheduleNotFound(t *testing.T) {
+	srv := newTestServer(t, &stubFetcher{err: fmt.Errorf("wrap: %w", resolve.ErrNotFound)}, nil)
+	ts := httptest.NewServer(srv.Routes())
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/api/schedule/group/" + url.PathEscape("НЕТУ"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 404 {
+		t.Errorf("status = %d, want 404", resp.StatusCode)
+	}
+}
+
+func TestAPIHistoryListAndDiff(t *testing.T) {
+	srv := newTestServer(t, &stubFetcher{}, nil)
+	target := model.Target{Type: model.TypeStudent, Query: "ИКС-531"}
+
+	v1 := model.Schedule{
+		Target: target, FetchedAt: time.Date(2026, 5, 14, 9, 0, 0, 0, time.UTC),
+		Weeks: []model.Week{
+			{Name: "числитель", Days: []model.Day{
+				{Weekday: "Понедельник", Lessons: []model.Lesson{
+					{Number: 1, TimeFrom: "08:00", TimeTo: "09:35", Subject: "Физика", Room: "а.101"},
+				}},
+			}},
+		},
+	}
+	v2 := model.Schedule{
+		Target: target, FetchedAt: time.Date(2026, 5, 15, 9, 0, 0, 0, time.UTC),
+		Weeks: []model.Week{
+			{Name: "числитель", Days: []model.Day{
+				{Weekday: "Понедельник", Lessons: []model.Lesson{
+					{Number: 1, TimeFrom: "08:00", TimeTo: "09:35", Subject: "Физика", Room: "а.999"},
+				}},
+			}},
+		},
+	}
+	_, id1, _ := srv.store.Save(target.Key(), v1)
+	_, id2, _ := srv.store.Save(target.Key(), v2)
+
+	ts := httptest.NewServer(srv.Routes())
+	defer ts.Close()
+
+	// Список версий.
+	resp, err := http.Get(ts.URL + "/api/history/group/" + url.PathEscape("ИКС-531"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("history status = %d", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), id2) || !strings.Contains(string(body), id1) {
+		t.Errorf("в списке нет обоих id: %s", body)
+	}
+
+	// Конкретная версия с diff_to.
+	url2 := ts.URL + "/api/history/group/" + url.PathEscape("ИКС-531") + "/" + id2 + "?diff_to=" + id1
+	resp2, err := http.Get(url2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp2.Body.Close()
+	body2, _ := io.ReadAll(resp2.Body)
+	if !strings.Contains(string(body2), `"schedule"`) || !strings.Contains(string(body2), `"diff"`) {
+		t.Errorf("ожидались schedule+diff: %s", body2)
+	}
+	if !strings.Contains(string(body2), `"kind":"room"`) {
+		t.Errorf("ожидался room-change: %s", body2)
+	}
+}
+
 func TestNetworkErrorFallsBackToCache(t *testing.T) {
 	srv := newTestServer(t, &stubFetcher{err: errors.New("боже сайт лёг")}, nil)
 	// положим в store кэш для target

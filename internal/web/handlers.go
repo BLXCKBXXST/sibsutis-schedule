@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -347,6 +348,163 @@ func parseShowWeek(raw string, today todayHint) int {
 		return today.WeekIdx
 	}
 	return -1
+}
+
+// handleAPISchedule отдаёт расписание target'а в JSON. Тот же source-of-truth,
+// что и HTML-страница (svc.Get с кэшем 15 минут и фолбэком на историю), но
+// в машиночитаемом виде — для расширений, ботов и собственных интеграций.
+//
+// GET /api/schedule/{type}/{q} → 200 model.Schedule (без RawHTML);
+//   404 — если group/teacher/room не найден;
+//   422 — ambiguous: возвращает {"error":"ambiguous","options":[...]};
+//   502 — сайт недоступен и в истории ничего нет.
+func (s *Server) handleAPISchedule(w http.ResponseWriter, r *http.Request) {
+	typ := r.PathValue("type")
+	tt, ok := urlTypeToTargetType(typ)
+	if !ok {
+		writeJSONStatus(w, http.StatusNotFound, map[string]string{"error": "unknown type"})
+		return
+	}
+	q := r.PathValue("q")
+	if q == "" {
+		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "empty query"})
+		return
+	}
+	target := model.Target{Type: tt, Query: q}
+
+	result, err := s.svc.Get(r.Context(), target, s.cfg.CacheFreshness)
+	// Сетевая ошибка — фолбэк на последний снапшот.
+	if err != nil &&
+		!errors.Is(err, resolve.ErrNotFound) &&
+		!errors.Is(err, resolve.ErrAmbiguous) {
+		if sched, _, lerr := s.store.Latest(target.Key()); lerr == nil {
+			result = schedule.Result{Schedule: sched, Source: schedule.SourceCache}
+			err = nil
+		}
+	}
+	if errors.Is(err, resolve.ErrNotFound) {
+		writeJSONStatus(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	if errors.Is(err, resolve.ErrAmbiguous) {
+		writeJSONStatus(w, http.StatusUnprocessableEntity, map[string]any{
+			"error":   "ambiguous",
+			"options": parseAmbiguousOptions(err.Error()),
+		})
+		return
+	}
+	if err != nil {
+		writeJSONStatus(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		return
+	}
+
+	// RawHTML не отдаём наружу: оно весит ~150KB и не нужно потребителям API.
+	sched := result.Schedule
+	sched.RawHTML = ""
+	w.Header().Set("Cache-Control", "public, max-age=300")
+	writeJSON(w, sched)
+}
+
+// handleAPIHistory отдаёт список сохранённых версий target'а в JSON.
+// Опциональный query-параметр ?limit=N ограничивает выдачу (по умолчанию 50);
+// порядок — от новых к старым (как ListLatest в store).
+//
+// GET /api/history/{type}/{q} → 200 [{id, fetched_at, title, lessons}].
+func (s *Server) handleAPIHistory(w http.ResponseWriter, r *http.Request) {
+	target, ok := parseAPITarget(w, r)
+	if !ok {
+		return
+	}
+	limit := 50
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 500 {
+			limit = n
+		}
+	}
+	infos, err := s.store.ListLatest(target.Key(), limit)
+	if err != nil {
+		writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if infos == nil {
+		infos = []store.VersionInfo{} // не отдавать null
+	}
+	w.Header().Set("Cache-Control", "public, max-age=60")
+	writeJSON(w, infos)
+}
+
+// handleAPIHistoryVersion отдаёт конкретную сохранённую версию.
+// Опциональный ?diff_to=<id> добавляет рядом diff к указанной версии:
+// `{"schedule":{...},"diff":[{...}]}`. Без diff_to отдаётся одна Schedule.
+//
+// GET /api/history/{type}/{q}/{id}[?diff_to=<id>] → 200 Schedule | {schedule, diff}.
+func (s *Server) handleAPIHistoryVersion(w http.ResponseWriter, r *http.Request) {
+	target, ok := parseAPITarget(w, r)
+	if !ok {
+		return
+	}
+	id := r.PathValue("id")
+	if id == "" {
+		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "empty id"})
+		return
+	}
+	sched, err := s.store.Load(target.Key(), id)
+	if err != nil {
+		writeJSONStatus(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		return
+	}
+	sched.RawHTML = ""
+
+	diffTo := r.URL.Query().Get("diff_to")
+	if diffTo == "" {
+		w.Header().Set("Cache-Control", "public, max-age=300")
+		writeJSON(w, sched)
+		return
+	}
+	other, err := s.store.Load(target.Key(), diffTo)
+	if err != nil {
+		writeJSONStatus(w, http.StatusNotFound, map[string]string{"error": "diff_to: " + err.Error()})
+		return
+	}
+	other.RawHTML = ""
+
+	// Семантика: diff_to — «другая версия, с которой сравнить». Считаем
+	// diff_to → id, т.е. показываем, что изменилось ПРИ ПЕРЕХОДЕ от
+	// diff_to к id. Это совпадает с UI: на странице history ссылка
+	// /history/.../{prev}..{this} означает «что добавилось в this
+	// относительно prev».
+	changes := diff.DiffSchedule(other, sched)
+	w.Header().Set("Cache-Control", "public, max-age=300")
+	writeJSON(w, map[string]any{
+		"schedule": sched,
+		"diff_to":  diffTo,
+		"diff":     changes,
+	})
+}
+
+// parseAPITarget парсит {type}/{q} из URL пути или возвращает ошибку клиенту.
+// Если type невалиден или q пуст — пишет 404/400 и возвращает ok=false.
+func parseAPITarget(w http.ResponseWriter, r *http.Request) (model.Target, bool) {
+	tt, ok := urlTypeToTargetType(r.PathValue("type"))
+	if !ok {
+		writeJSONStatus(w, http.StatusNotFound, map[string]string{"error": "unknown type"})
+		return model.Target{}, false
+	}
+	q := r.PathValue("q")
+	if q == "" {
+		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "empty query"})
+		return model.Target{}, false
+	}
+	return model.Target{Type: tt, Query: q}, true
+}
+
+// writeJSONStatus — writeJSON с заданным HTTP-кодом.
+func writeJSONStatus(w http.ResponseWriter, code int, v any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(code)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		log.Printf("write json: %v", err)
+	}
 }
 
 // handleHistory отдаёт страницу со списком сохранённых версий target'а.

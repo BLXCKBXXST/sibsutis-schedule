@@ -30,13 +30,13 @@ const (
 // Change — одно изменение между двумя версиями. Old заполнен для Removed/Time/
 // Room/Teacher/Type, New — для Added/Time/Room/Teacher/Type.
 type Change struct {
-	Kind     Kind
-	WeekIdx  int    // 0/1
-	DayIdx   int    // 0..6
-	WeekName string // «числитель» / «знаменатель» — для UI
-	Weekday  string // «Понедельник» — для UI
-	Old      model.Lesson
-	New      model.Lesson
+	Kind     Kind         `json:"kind"`
+	WeekIdx  int          `json:"week_idx"`            // 0/1
+	DayIdx   int          `json:"day_idx"`             // 0..6
+	WeekName string       `json:"week_name,omitempty"` // «числитель» / «знаменатель»
+	Weekday  string       `json:"weekday,omitempty"`   // «Понедельник»
+	Old      model.Lesson `json:"old,omitempty"`
+	New      model.Lesson `json:"new,omitempty"`
 }
 
 // DiffSchedule возвращает изменения, нужные чтобы перейти от oldS к newS.
