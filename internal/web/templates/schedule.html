@@ -20,14 +20,30 @@
 {{if $s.IsEmpty}}
   <p class="muted">Пар не найдено.</p>
 {{else}}
+  <nav class="week-tabs" aria-label="Выбор недели">
+    <a class="week-tab{{if eq .ShowWeek 0}} is-active{{end}}" href="?week=0">Числитель</a>
+    <a class="week-tab{{if eq .ShowWeek 1}} is-active{{end}}" href="?week=1">Знаменатель</a>
+    <a class="week-tab{{if eq .ShowWeek -1}} is-active{{end}}" href="?week=all">Обе</a>
+  </nav>
   {{range $wi, $w := $s.Weeks}}
+    {{if or (eq $.ShowWeek -1) (eq $.ShowWeek $wi)}}
     <section class="week"{{if and $today.Found (eq $wi $today.WeekIdx)}} data-active-week="true"{{end}}>
       <h3>{{ $w.Name | capitalize }}</h3>
+      <nav class="day-tabs" aria-label="Дни недели">
+        {{range $di, $d := $w.Days}}
+          {{ $isToday := and $today.Found (eq $wi $today.WeekIdx) (eq $di $today.DayIdx) }}
+          {{ $hasLessons := gt (len $d.Lessons) 0 }}
+          <a href="#d-{{$wi}}-{{$di}}"
+             class="day-tab{{if $isToday}} is-today{{end}}{{if not $hasLessons}} is-empty{{end}}">
+            {{slice $d.Weekday 0 2}}
+          </a>
+        {{end}}
+      </nav>
       {{range $di, $d := $w.Days}}
         {{ $isToday := and $today.Found (eq $wi $today.WeekIdx) (eq $di $today.DayIdx) }}
-        <article class="day"{{if $isToday}} id="today" data-today="{{if $today.IsExactDay}}exact{{else}}upcoming{{end}}"{{end}}>
+        <article class="day" id="d-{{$wi}}-{{$di}}"{{if $isToday}} data-today="{{if $today.IsExactDay}}exact{{else}}upcoming{{end}}"{{end}}>
           <h4>📅 {{$d.Weekday}}</h4>
-          {{if .Lessons}}
+          {{if $d.Lessons}}
             <table class="lessons">
               <thead>
                 <tr>
@@ -44,13 +60,13 @@
                 {{range $li, $l := $d.Lessons}}
                 {{ $cls := lessonClass $.NowLesson $.NextLesson $wi $di $li }}
                 <tr{{if $cls}} class="{{$cls}}"{{end}}>
-                  <td>{{if gt $l.Number 0}}{{$l.Number}}{{end}}</td>
-                  <td><b>{{timeRange $l}}</b></td>
-                  <td>{{$l.Subject}}</td>
-                  <td><i>{{$l.Type}}</i></td>
-                  <td>{{join ", " $l.Teachers}}</td>
-                  <td>{{$l.Room}}</td>
-                  <td>{{if isStudent $type}}{{$l.Subgroup}}{{else}}{{join ", " $l.Groups}}{{end}}</td>
+                  <td data-label="№">{{if gt $l.Number 0}}{{$l.Number}}{{end}}</td>
+                  <td data-label="Время"><b>{{timeRange $l}}</b></td>
+                  <td data-label="Пара">{{$l.Subject}}</td>
+                  <td data-label="Тип"><i>{{$l.Type}}</i></td>
+                  <td data-label="Преподаватель">{{join ", " $l.Teachers}}</td>
+                  <td data-label="Аудитория">{{$l.Room}}</td>
+                  <td data-label="{{if isStudent $type}}Подгруппа{{else}}Группы{{end}}">{{if isStudent $type}}{{$l.Subgroup}}{{else}}{{join ", " $l.Groups}}{{end}}</td>
                 </tr>
                 {{end}}
               </tbody>
@@ -61,6 +77,7 @@
         </article>
       {{end}}
     </section>
+    {{end}}
   {{end}}
 {{end}}
 

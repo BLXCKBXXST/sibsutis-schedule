@@ -32,6 +32,11 @@ type scheduleData struct {
 	NextLesson   *lessonRef // следующая пара по расписанию (или nil)
 	NextLessonAt time.Time  // точное начало NextLesson (для live-таймера)
 	ServerNow    time.Time  // момент рендера в зоне Asia/Krasnoyarsk
+	// ShowWeek управляет тем, какие недели рендерить:
+	//   0/1   — только числитель/знаменатель,
+	//   -1    — обе подряд (старый layout).
+	// По умолчанию (URL без ?week=) подставляется активная неделя из Today.
+	ShowWeek int
 }
 
 // ambiguousData — данные для страницы «уточни запрос».
@@ -158,19 +163,39 @@ func (s *Server) handleSchedule(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now().In(krskLocation)
 	hl := highlights(result.Schedule, now)
+	today := computeTodayHint(result.Schedule, now)
+	showWeek := parseShowWeek(r.URL.Query().Get("week"), today)
 	w.Header().Set("Cache-Control", "public, max-age=300")
 	s.render.render(w, http.StatusOK, "schedule", scheduleData{
-		Title:       target.Label() + " — расписание",
-		Schedule:    result.Schedule,
-		Target:      target,
-		FromCache:   fromCache,
-		CacheReason: cacheReason,
-		Today:       computeTodayHint(result.Schedule, now),
-		NowLesson:   hl.Now,
-		NextLesson:  hl.Next,
+		Title:        target.Label() + " — расписание",
+		Schedule:     result.Schedule,
+		Target:       target,
+		FromCache:    fromCache,
+		CacheReason:  cacheReason,
+		Today:        today,
+		NowLesson:    hl.Now,
+		NextLesson:   hl.Next,
 		NextLessonAt: hl.NextAt,
-		ServerNow:   now,
+		ServerNow:    now,
+		ShowWeek:     showWeek,
 	})
+}
+
+// parseShowWeek разбирает ?week=. Пустое или невалидное значение → активная
+// неделя из today (или -1, если сегодня не покрыто).
+func parseShowWeek(raw string, today todayHint) int {
+	switch raw {
+	case "0":
+		return 0
+	case "1":
+		return 1
+	case "all":
+		return -1
+	}
+	if today.Found {
+		return today.WeekIdx
+	}
+	return -1
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

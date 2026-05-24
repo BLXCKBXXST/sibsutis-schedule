@@ -43,12 +43,11 @@
   }
 
   function scrollToToday() {
-    if (window.location.hash === '#today') return;
-    if (!document.getElementById('today')) return;
-    // Тихий «жесткий» якорь — без перепрыгивания, через history-replace
-    // и нативный scroll по элементу.
-    history.replaceState(null, '', window.location.pathname + window.location.search + '#today');
-    document.getElementById('today').scrollIntoView({behavior: 'instant', block: 'start'});
+    // Если пользователь сам пришёл по якорю — не перепрыгиваем.
+    if (window.location.hash) return;
+    var today = document.querySelector('[data-today]');
+    if (!today) return;
+    today.scrollIntoView({behavior: 'instant', block: 'start'});
   }
 
   document.addEventListener('DOMContentLoaded', function () {

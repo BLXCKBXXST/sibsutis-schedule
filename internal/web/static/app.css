@@ -156,6 +156,67 @@ h4 { margin: 1rem 0 0.25rem; }
 }
 .now-strip #next-timer { font-weight: 600; }
 
+/* Переключатель «числитель / знаменатель / обе». */
+.week-tabs {
+  display: flex;
+  gap: 0.4rem;
+  margin: 1rem 0 0.8rem;
+  flex-wrap: wrap;
+}
+.week-tab {
+  padding: 0.35rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--fg);
+  background: var(--row);
+  font-size: 0.9rem;
+}
+.week-tab:hover { background: var(--row-alt); text-decoration: none; }
+.week-tab.is-active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+/* Навигация по дням недели — на десктопе незаметная (вся таблица видна),
+   на мобиле — sticky-полоска со скроллом по горизонтали. */
+.day-tabs {
+  display: flex;
+  gap: 0.4rem;
+  margin: 0.3rem 0 0.8rem;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.day-tab {
+  flex: 0 0 auto;
+  padding: 0.3rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--row);
+  color: var(--fg);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+}
+.day-tab:hover { background: var(--row-alt); text-decoration: none; }
+.day-tab.is-today {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.day-tab.is-empty { opacity: 0.45; }
+
+@media (max-width: 700px) {
+  .day-tabs {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: var(--bg);
+    padding: 0.4rem 0;
+    margin-top: 0;
+    box-shadow: 0 1px 0 var(--border);
+  }
+}
+
 .week + .week { margin-top: 1.5rem; }
 .day { margin: 0.5rem 0 1.5rem; }
 
@@ -216,9 +277,43 @@ h4 { margin: 1rem 0 0.25rem; }
 @media (max-width: 700px) {
   .lessons thead { display: none; }
   .lessons, .lessons tbody, .lessons tr, .lessons td { display: block; width: 100%; }
-  .lessons tr { padding: 0.5rem; border-bottom: 1px solid var(--border); }
+  .lessons tbody tr {
+    padding: 0.7rem 0.9rem;
+    margin: 0.5rem 0;
+    border: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--row);
+  }
+  /* Зебра на десктопе мешает в карточном виде — выключаем. */
+  .lessons tbody tr:nth-child(even),
+  .lessons tbody tr:nth-child(odd) { background: var(--row); }
+  /* Подсветка «сейчас идёт» и «следующая» — фон + цветная полоса слева. */
+  .lessons tbody tr.is-now {
+    background: var(--now-bg);
+    border-left: 4px solid var(--now-bar);
+  }
+  .lessons tbody tr.is-next {
+    background: var(--next-bg);
+    border-left: 4px solid var(--next-bar);
+  }
   .lessons td { border: none; padding: 0.1rem 0; }
   .lessons td:empty { display: none; }
+  /* «Пара» — основное название дисциплины, крупно и без подписи. */
+  .lessons td[data-label="Пара"] {
+    font-size: 1.05rem;
+    font-weight: 600;
+    margin-bottom: 0.2rem;
+  }
+  .lessons td[data-label="№"] { display: none; }
+  /* Перед остальными ячейками — серая подпись. */
+  .lessons td[data-label]::before {
+    content: attr(data-label) ": ";
+    color: var(--muted);
+    font-size: 0.85rem;
+    margin-right: 0.3rem;
+  }
+  .lessons td[data-label="Пара"]::before { content: none; }
 }
 
 .ambiguous-list { padding-left: 1.25rem; }
