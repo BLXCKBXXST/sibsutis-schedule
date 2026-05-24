@@ -13,11 +13,13 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/BLXCKBXXST/sibsutis-schedule/internal/config"
 	"github.com/BLXCKBXXST/sibsutis-schedule/internal/schedule"
 	"github.com/BLXCKBXXST/sibsutis-schedule/internal/store"
+	"github.com/BLXCKBXXST/sibsutis-schedule/internal/watch"
 	"github.com/BLXCKBXXST/sibsutis-schedule/internal/web"
 )
 
@@ -61,8 +63,18 @@ func run(configPath, dataDir string) error {
 		return fmt.Errorf("web server: %w", err)
 	}
 
+	reg, err := watch.Open(filepath.Join(st.Dir(), "watch.json"))
+	if err != nil {
+		return fmt.Errorf("watch: %w", err)
+	}
+	worker := watch.NewWorker(reg, svc, cfg.WatchInterval, cfg.WatchTTL)
+	srv.SetTouchHook(worker.TouchHook())
+
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+
+	// Воркер живёт всю жизнь процесса, останавливается на ctx.Done().
+	go worker.Run(ctx)
 
 	return srv.ListenAndServe(ctx)
 }

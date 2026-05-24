@@ -37,6 +37,9 @@ const (
 	DefaultAuthURL        = "https://my.sibsutis.ru/auth/"
 	DefaultCacheFreshness = 15 * time.Minute
 	DefaultWebListenAddr  = ":8080"
+	DefaultWatchInterval  = 60 * time.Minute
+	DefaultWatchTTL       = 14 * 24 * time.Hour
+	MinWatchInterval      = 5 * time.Minute
 )
 
 // Config — разобранные настройки.
@@ -55,6 +58,13 @@ type Config struct {
 	// (приемлемо для small-scale деплоя; для production стабильности —
 	// прописать ics_secret в config.txt).
 	ICSSecret []byte
+	// WatchInterval — как часто фоновый воркер обновляет «горячие» target'ы
+	// в watch.json. Дефолт 60 минут. Жёстко лимитируется снизу 5 минутами —
+	// чтобы случайно не задосить my.sibsutis.ru.
+	WatchInterval time.Duration
+	// WatchTTL — через сколько без просмотров target выкидывается из
+	// реестра. Дефолт 14 дней.
+	WatchTTL time.Duration
 }
 
 // Load ищет и читает конфиг. Если explicitPath не пуст — используется только он.
@@ -109,7 +119,37 @@ func Load(explicitPath string) (*Config, error) {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 
+	cfg.WatchInterval, err = parseMinutes(values["watch_interval_minutes"], DefaultWatchInterval, MinWatchInterval)
+	if err != nil {
+		return nil, fmt.Errorf("%s: watch_interval_minutes: %w", path, err)
+	}
+	cfg.WatchTTL, err = parseMinutes(values["watch_ttl_minutes"], DefaultWatchTTL, time.Hour)
+	if err != nil {
+		return nil, fmt.Errorf("%s: watch_ttl_minutes: %w", path, err)
+	}
+
 	return cfg, nil
+}
+
+// parseMinutes — общий парсер «значение в минутах»; пусто/0 → def, иначе
+// проверка на минимум.
+func parseMinutes(s string, def, min time.Duration) (time.Duration, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return def, nil
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil || n < 0 {
+		return 0, fmt.Errorf("ожидалось неотрицательное целое в минутах, получено %q", s)
+	}
+	if n == 0 {
+		return def, nil
+	}
+	d := time.Duration(n) * time.Minute
+	if d < min {
+		return 0, fmt.Errorf("должно быть не меньше %s (получено %s)", min, d)
+	}
+	return d, nil
 }
 
 // parseICSSecret разбирает ics_secret из конфига. Допустимые форматы:

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/BLXCKBXXST/sibsutis-schedule/internal/config"
+	"github.com/BLXCKBXXST/sibsutis-schedule/internal/model"
 	"github.com/BLXCKBXXST/sibsutis-schedule/internal/schedule"
 	"github.com/BLXCKBXXST/sibsutis-schedule/internal/store"
 )
@@ -19,7 +20,15 @@ type Server struct {
 	store     *store.Store
 	render    *renderer
 	suggester *suggester
+	// onTouch вызывается из handleSchedule после успешного рендера,
+	// чтобы фоновый воркер мог запомнить «горячий» target. nil — игнорим.
+	onTouch func(model.Target)
 }
+
+// SetTouchHook регистрирует функцию, которую сервер дёргает при каждом
+// просмотре /schedule/{type}/{q}. Используется для watch.Worker.TouchHook.
+// Безопасен для конкурентного вызова до Routes()/ListenAndServe().
+func (s *Server) SetTouchHook(h func(model.Target)) { s.onTouch = h }
 
 // New собирает Server. Шаблоны парсятся один раз при старте — на каждый
 // запрос render лишь подставляет данные.

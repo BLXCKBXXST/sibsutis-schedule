@@ -303,6 +303,9 @@ func (s *Server) handleSchedule(w http.ResponseWriter, r *http.Request) {
 	order := [2]int{current, 1 - current}
 	icsToken := signICSTarget(s.cfg.ICSSecret, target)
 	webcal := "webcal://" + r.Host + "/ics/" + icsToken
+	if s.onTouch != nil {
+		s.onTouch(target)
+	}
 	w.Header().Set("Cache-Control", "public, max-age=300")
 	s.render.render(w, http.StatusOK, "schedule", scheduleData{
 		Title:        target.Label() + " — расписание",
