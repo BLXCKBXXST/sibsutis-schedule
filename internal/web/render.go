@@ -66,12 +66,14 @@ func newRenderer() (*renderer, error) {
 		},
 		// lessonClass возвращает CSS-класс для строки пары: "is-now" для
 		// идущей сейчас, "is-next" для ближайшей следующей, пусто иначе.
-		// nowRef и nextRef могут быть nil.
-		"lessonClass": func(nowRef, nextRef *lessonRef, wi, di, li int) string {
-			if nowRef != nil && nowRef.WeekIdx == wi && nowRef.DayIdx == di && nowRef.LessonIdx == li {
+		// Сравнение идёт по слоту (день + TimeFrom), а не по индексу строки —
+		// тогда все Lesson-ы одного слота (например, параллельные подгруппы)
+		// получают одинаковую подсветку.
+		"lessonClass": func(nowSlot, nextSlot *slotRef, wi, di int, timeFrom string) string {
+			if nowSlot != nil && nowSlot.WeekIdx == wi && nowSlot.DayIdx == di && nowSlot.TimeFrom == timeFrom {
 				return "is-now"
 			}
-			if nextRef != nil && nextRef.WeekIdx == wi && nextRef.DayIdx == di && nextRef.LessonIdx == li {
+			if nextSlot != nil && nextSlot.WeekIdx == wi && nextSlot.DayIdx == di && nextSlot.TimeFrom == timeFrom {
 				return "is-next"
 			}
 			return ""

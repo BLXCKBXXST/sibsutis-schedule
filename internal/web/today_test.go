@@ -79,10 +79,10 @@ func TestHighlights(t *testing.T) {
 	// Вт 26.05.2026 10:00 (числитель) — идёт Программирование (09:50–11:25),
 	// следующая по циклу — Физика в ср знаменателя 03.06 11:40.
 	hl := highlights(s, time.Date(2026, 5, 26, 10, 0, 0, 0, loc))
-	if hl.Now == nil || hl.Now.WeekIdx != 0 || hl.Now.DayIdx != 1 || hl.Now.LessonIdx != 1 {
+	if hl.Now == nil || hl.Now.WeekIdx != 0 || hl.Now.DayIdx != 1 || hl.Now.TimeFrom != "09:50" {
 		t.Errorf("Now (Программирование) = %+v", hl.Now)
 	}
-	if hl.Next == nil || hl.Next.WeekIdx != 1 || hl.Next.DayIdx != 2 {
+	if hl.Next == nil || hl.Next.WeekIdx != 1 || hl.Next.DayIdx != 2 || hl.Next.TimeFrom != "11:40" {
 		t.Errorf("Next (Физика 03.06) = %+v", hl.Next)
 	}
 	want := time.Date(2026, 6, 3, 11, 40, 0, 0, loc)
@@ -119,6 +119,49 @@ func TestHighlights(t *testing.T) {
 	}}
 	if hl := highlights(empty, time.Date(2026, 5, 26, 0, 0, 0, 0, loc)); hl.Now != nil || hl.Next != nil {
 		t.Errorf("пустое расписание: %+v", hl)
+	}
+}
+
+// TestHighlightsCoversSubgroupsInSameSlot — регрессия на баг, где из двух
+// параллельных подгрупп в одном слоте подсвечивалась только первая.
+// Теперь highlights возвращает slotRef (не индекс пары), и сравнение в
+// шаблоне идёт по TimeFrom — обе пары слота получают одинаковый класс.
+func TestHighlightsCoversSubgroupsInSameSlot(t *testing.T) {
+	loc := krskLocation
+	s := model.Schedule{
+		Weeks: []model.Week{
+			{Name: "числитель", Days: []model.Day{
+				{Weekday: "Понедельник"},
+				{Weekday: "Вторник", Lessons: []model.Lesson{
+					{Number: 2, TimeFrom: "09:50", TimeTo: "11:25",
+						Subject: "Физика", Subgroup: "1"},
+					{Number: 2, TimeFrom: "09:50", TimeTo: "11:25",
+						Subject: "Математика", Subgroup: "2"},
+				}},
+				{Weekday: "Среда"}, {Weekday: "Четверг"}, {Weekday: "Пятница"},
+				{Weekday: "Суббота"}, {Weekday: "Воскресенье"},
+			}},
+			{Name: "знаменатель", Days: []model.Day{
+				{Weekday: "Понедельник"}, {Weekday: "Вторник"}, {Weekday: "Среда"},
+				{Weekday: "Четверг"}, {Weekday: "Пятница"}, {Weekday: "Суббота"},
+				{Weekday: "Воскресенье"},
+			}},
+		},
+	}
+
+	// is-now: в 10:00 идёт слот 09:50–11:25; в нём обе подгруппы.
+	hl := highlights(s, time.Date(2026, 5, 26, 10, 0, 0, 0, loc))
+	if hl.Now == nil || hl.Now.WeekIdx != 0 || hl.Now.DayIdx != 1 || hl.Now.TimeFrom != "09:50" {
+		t.Fatalf("Now slot = %+v, ожидался (0,1,09:50)", hl.Now)
+	}
+
+	// Проверяем, что обе строки реально получат класс is-now: имитируем
+	// то, что делает lessonClass в шаблоне — сравнение по (wi, di, TimeFrom).
+	for li, l := range s.Weeks[0].Days[1].Lessons {
+		match := hl.Now.WeekIdx == 0 && hl.Now.DayIdx == 1 && hl.Now.TimeFrom == l.TimeFrom
+		if !match {
+			t.Errorf("подгруппа Lesson[%d] %q не попала под подсветку слота", li, l.Subject)
+		}
 	}
 }
 

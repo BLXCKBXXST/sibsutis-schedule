@@ -40,9 +40,9 @@ type scheduleData struct {
 	FromCache    bool
 	CacheReason  string
 	Today        todayHint
-	NowLesson    *lessonRef // пара, идущая прямо сейчас (или nil)
-	NextLesson   *lessonRef // следующая пара по расписанию (или nil)
-	NextLessonAt time.Time  // точное начало NextLesson (для live-таймера)
+	NowSlot      *slotRef  // слот, идущий прямо сейчас (или nil)
+	NextSlot     *slotRef  // следующий слот по расписанию (или nil)
+	NextLessonAt time.Time // точное начало NextSlot (для live-таймера)
 	ServerNow    time.Time  // момент рендера в зоне Asia/Krasnoyarsk
 	// ShowWeek управляет тем, какие недели рендерить:
 	//   0/1   — только числитель/знаменатель,
@@ -323,8 +323,8 @@ func (s *Server) handleSchedule(w http.ResponseWriter, r *http.Request) {
 		FromCache:    fromCache,
 		CacheReason:  cacheReason,
 		Today:        today,
-		NowLesson:    hl.Now,
-		NextLesson:   hl.Next,
+		NowSlot:      hl.Now,
+		NextSlot:     hl.Next,
 		NextLessonAt: hl.NextAt,
 		ServerNow:    now,
 		ShowWeek:     showWeek,

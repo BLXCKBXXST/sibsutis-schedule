@@ -79,29 +79,37 @@ func weekdayIndex(t time.Time) int {
 	return wd - 1
 }
 
-// lessonRef — позиция пары в Schedule. Сравнивается в шаблоне с индексами
-// текущей итерации, чтобы выделить «идущую сейчас» и «ближайшую следующую».
-type lessonRef struct {
-	WeekIdx, DayIdx, LessonIdx int
+// slotRef — позиция «слота» (день + момент начала) в Schedule. Используется
+// вместо ссылки на конкретный Lesson: если в одном временно́м слоте лежит
+// несколько пар (типичный случай — параллельные подгруппы по разным
+// предметам), все они должны подсветиться как одна «идущая сейчас» /
+// «следующая». TimeFrom однозначно идентифицирует слот внутри (WeekIdx,
+// DayIdx) — пары с одним TimeFrom считаем одним слотом.
+type slotRef struct {
+	WeekIdx, DayIdx int
+	TimeFrom        string
 }
 
-// lessonHL — то, что хочет знать UI про «здесь и сейчас»: указатели на пары
-// и точный момент начала следующей. NextAt используется для live-таймера.
+// lessonHL — то, что хочет знать UI про «здесь и сейчас»: указатели на
+// слоты и точный момент начала следующего. NextAt используется для
+// live-таймера.
 type lessonHL struct {
-	Now, Next *lessonRef
+	Now, Next *slotRef
 	NextAt    time.Time
 }
 
-// highlights определяет, какая пара идёт прямо сейчас и какая будет
-// следующей по двухнедельному циклу. Now=nil — сейчас никто не идёт;
+// highlights определяет, какой слот идёт прямо сейчас и какой будет
+// следующим по двухнедельному циклу. Now=nil — сейчас никто не идёт;
 // Next=nil — расписание совсем пустое.
 //
 // Алгоритм: считаем parity сегодняшней недели через model.WeekParity.
-// Для «сейчас идёт» проверяем только пары из Weeks[parity].Days[weekday].
-// Для «следующей» итерируем 14 дней вперёд начиная с сегодня — на каждом
-// дне выбираем подходящую неделю Schedule и проверяем все пары этого
-// (weekday) дня; первый begin, который > now, выигрывает (между парами
-// одного дня сравниваем по часам).
+// Для «сейчас идёт» проверяем только слоты из Weeks[parity].Days[weekday].
+// Для «следующего» итерируем 14 дней вперёд начиная с сегодня — на каждом
+// дне выбираем подходящую неделю Schedule и проверяем все пары этого дня;
+// слот с минимальным begin > now выигрывает.
+//
+// Идентификация по (WeekIdx, DayIdx, TimeFrom) гарантирует, что несколько
+// Lesson-строк одного слота (подгруппы) подсвечиваются одновременно.
 func highlights(s model.Schedule, now time.Time) lessonHL {
 	now = now.In(krskLocation)
 	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, krskLocation)
@@ -111,8 +119,8 @@ func highlights(s model.Schedule, now time.Time) lessonHL {
 	}
 
 	var (
-		cur      *lessonRef
-		bestNext *lessonRef
+		cur      *slotRef
+		bestNext *slotRef
 		bestAt   time.Time
 	)
 
@@ -123,7 +131,7 @@ func highlights(s model.Schedule, now time.Time) lessonHL {
 		if wi >= len(s.Weeks) || di >= len(s.Weeks[wi].Days) {
 			continue
 		}
-		for li, l := range s.Weeks[wi].Days[di].Lessons {
+		for _, l := range s.Weeks[wi].Days[di].Lessons {
 			from, ferr := parseHHMMLocal(l.TimeFrom)
 			to, terr := parseHHMMLocal(l.TimeTo)
 			if ferr {
@@ -131,25 +139,24 @@ func highlights(s model.Schedule, now time.Time) lessonHL {
 			}
 			begin := time.Date(date.Year(), date.Month(), date.Day(), from.h, from.m, 0, 0, krskLocation)
 
-			// is-now: пара относится к сегодняшнему дню и now попадает в [begin, end).
+			// is-now: слот в сегодняшнем дне, now попадает в [begin, end).
+			// Достаточно одного матча — этот слот применится ко всем парам
+			// с тем же TimeFrom в (wi, di).
 			if offset == 0 && !terr && cur == nil {
 				end := time.Date(date.Year(), date.Month(), date.Day(), to.h, to.m, 0, 0, krskLocation)
 				if !now.Before(begin) && now.Before(end) {
-					ref := lessonRef{wi, di, li}
+					ref := slotRef{wi, di, l.TimeFrom}
 					cur = &ref
 				}
 			}
 
-			// is-next: ближайшая пара, начало которой строго в будущем.
+			// is-next: слот с минимальным begin > now.
 			if begin.After(now) && (bestNext == nil || begin.Before(bestAt)) {
-				ref := lessonRef{wi, di, li}
+				ref := slotRef{wi, di, l.TimeFrom}
 				bestNext = &ref
 				bestAt = begin
 			}
 		}
-		// Если нашли next в сегодняшнем дне и он не позже завтрашних
-		// потенциальных кандидатов — можно и не идти дальше, но цикл
-		// дешёвый, доводим до конца ради надёжности.
 	}
 
 	hl := lessonHL{Now: cur}

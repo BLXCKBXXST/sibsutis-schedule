@@ -10,7 +10,7 @@
   {{else}}
     <p class="muted">Выгружено: {{formatTime $s.FetchedAt}}</p>
   {{end}}
-  {{if .NextLesson}}
+  {{if .NextSlot}}
     <aside class="now-strip" data-next-iso="{{.NextLessonAt.Format "2006-01-02T15:04:05-07:00"}}">
       Следующая пара начнётся через <span id="next-timer">…</span>
     </aside>
@@ -78,7 +78,7 @@
               </thead>
               <tbody>
                 {{range $li, $l := $d.Lessons}}
-                {{ $cls := lessonClass $.NowLesson $.NextLesson $wi $di $li }}
+                {{ $cls := lessonClass $.NowSlot $.NextSlot $wi $di $l.TimeFrom }}
                 <tr{{if $cls}} class="{{$cls}}"{{end}}>
                   <td data-label="№">{{if gt $l.Number 0}}{{$l.Number}}{{end}}</td>
                   <td data-label="Время"><b>{{timeRange $l}}</b></td>
