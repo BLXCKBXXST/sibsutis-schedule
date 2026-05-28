@@ -15,21 +15,13 @@
       Следующая пара начнётся через <span id="next-timer">…</span>
     </aside>
   {{end}}
-  <p class="schedule-actions">
-    <a class="action" href="/calendar/{{urlType $type}}/{{.Target.Query}}">
-      Скачать в календарь (.ics)
-    </a>
-    {{if .ICSWebcalURL}}
-      <a class="action" href="{{safeURL .ICSWebcalURL}}" title="Подписка обновляется автоматически — каждый час календарь подтягивает новую версию">
-        Подписаться в календарь
-      </a>
-    {{end}}
-    {{if .TelegramSubscribeURL}}
+  {{if .TelegramSubscribeURL}}
+    <p class="schedule-actions">
       <a class="action" href="{{.TelegramSubscribeURL}}" title="Бот напишет, если у этого расписания что-то изменится">
         Уведомления в Telegram
       </a>
-    {{end}}
-  </p>
+    </p>
+  {{end}}
 </header>
 
 {{if $s.IsEmpty}}

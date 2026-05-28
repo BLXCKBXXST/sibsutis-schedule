@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/BLXCKBXXST/sibsutis-schedule/internal/diff"
-	"github.com/BLXCKBXXST/sibsutis-schedule/internal/ics"
 	"github.com/BLXCKBXXST/sibsutis-schedule/internal/model"
 	"github.com/BLXCKBXXST/sibsutis-schedule/internal/notify"
 	"github.com/BLXCKBXXST/sibsutis-schedule/internal/resolve"
@@ -58,9 +57,6 @@ type scheduleData struct {
 	// CurrentWeek — индекс текущей по календарю недели (нужен шаблону,
 	// чтобы пометить таб «сегодня» независимо от выбранной ShowWeek).
 	CurrentWeek int
-	// ICSWebcalURL — webcal://-URL подписки в календарь, генерируется
-	// из текущего хоста запроса и HMAC-подписанного токена target'а.
-	ICSWebcalURL string
 	// TelegramSubscribeURL — ссылка на бота с deep-link'ом, добавляющая
 	// текущий target в подписки. Пусто — Telegram-бот не настроен,
 	// кнопка скрыта.
@@ -306,8 +302,6 @@ func (s *Server) handleSchedule(w http.ResponseWriter, r *http.Request) {
 		current = today.WeekIdx
 	}
 	order := [2]int{current, 1 - current}
-	icsToken := signICSTarget(s.cfg.ICSSecret, target)
-	webcal := "webcal://" + r.Host + "/ics/" + icsToken
 	var tgURL string
 	if s.tgBotUsername != "" {
 		tgURL = "https://t.me/" + s.tgBotUsername + "?start=" + notify.EncodeStartToken(target)
@@ -317,21 +311,20 @@ func (s *Server) handleSchedule(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "public, max-age=300")
 	s.render.render(w, http.StatusOK, "schedule", scheduleData{
-		Title:        target.Label() + " — расписание",
-		Schedule:     result.Schedule,
-		Target:       target,
-		FromCache:    fromCache,
-		CacheReason:  cacheReason,
-		Today:        today,
-		NowSlot:      hl.Now,
-		NextSlot:     hl.Next,
-		NextLessonAt: hl.NextAt,
-		ServerNow:    now,
-		ShowWeek:     showWeek,
+		Title:                target.Label() + " — расписание",
+		Schedule:             result.Schedule,
+		Target:               target,
+		FromCache:            fromCache,
+		CacheReason:          cacheReason,
+		Today:                today,
+		NowSlot:              hl.Now,
+		NextSlot:             hl.Next,
+		NextLessonAt:         hl.NextAt,
+		ServerNow:            now,
+		ShowWeek:             showWeek,
 		WeekStarts:           starts,
 		WeekOrder:            order,
 		CurrentWeek:          current,
-		ICSWebcalURL:         webcal,
 		TelegramSubscribeURL: tgURL,
 	})
 }
@@ -370,55 +363,6 @@ func parseShowWeek(raw string, today todayHint) int {
 	return -1
 }
 
-// handleScheduleICS отдаёт расписание target'а в iCalendar-формате.
-// GET /schedule/{type}/{q}.ics. Источник тот же — svc.Get с фолбэком на
-// историю; RawHTML в .ics не идёт. Content-Disposition заставляет браузер
-// предложить «открыть в календаре» вместо рендера в окне.
-func (s *Server) handleScheduleICS(w http.ResponseWriter, r *http.Request) {
-	tt, ok := urlTypeToTargetType(r.PathValue("type"))
-	if !ok {
-		http.NotFound(w, r)
-		return
-	}
-	q := r.PathValue("q")
-	if q == "" {
-		http.NotFound(w, r)
-		return
-	}
-	target := model.Target{Type: tt, Query: q}
-
-	result, err := s.svc.Get(r.Context(), target, s.cfg.CacheFreshness)
-	if err != nil &&
-		!errors.Is(err, resolve.ErrNotFound) &&
-		!errors.Is(err, resolve.ErrAmbiguous) {
-		if sched, _, lerr := s.store.Latest(target.Key()); lerr == nil {
-			result = schedule.Result{Schedule: sched, Source: schedule.SourceCache}
-			err = nil
-		}
-	}
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadGateway)
-		return
-	}
-
-	body := ics.RenderSchedule(result.Schedule, ics.Options{
-		Anchor: time.Now().In(krskLocation),
-		Loc:    krskLocation,
-	})
-	w.Header().Set("Content-Type", "text/calendar; charset=utf-8")
-	w.Header().Set("Cache-Control", "public, max-age=900")
-	filename := icsFilename(target)
-	w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
-	_, _ = w.Write(body)
-}
-
-// icsFilename — латиница-only имя файла, чтобы не воевать с кодировками
-// в HTTP-заголовке. Структура: sibsutis-<type>-<хэш ключа>.ics.
-func icsFilename(t model.Target) string {
-	key := strings.ReplaceAll(t.Key(), "/", "-")
-	return "sibsutis-" + key + ".ics"
-}
-
 // handleServiceWorker отдаёт static/sw.js под корневым путём /sw.js,
 // чтобы у service worker'а получился scope = "/" (если файл доступен
 // только через /static/sw.js, scope ограничивается /static/ и SW не
@@ -434,45 +378,6 @@ func (s *Server) handleServiceWorker(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Service-Worker-Allowed", "/")
 	w.Header().Set("Cache-Control", "no-cache")
 	_, _ = w.Write(b)
-}
-
-// handleICSSubscribe — подписной webcal-эндпоинт. URL вида /ics/{token}
-// где token подписан HMAC от секрета сервера. Клиент-календарь (Google,
-// Apple, Outlook) ходит сюда раз в час и автоматически подтягивает
-// обновлённое расписание. Cache-Control 1 час — синхронизация скорости
-// клиентов и нагрузки.
-//
-// При битом или чужом токене — 404, чтобы не выдавать наружу детали
-// (валидна ли часть payload, существует ли target и т.п.).
-func (s *Server) handleICSSubscribe(w http.ResponseWriter, r *http.Request) {
-	token := r.PathValue("token")
-	target, err := verifyICSToken(s.cfg.ICSSecret, token)
-	if err != nil {
-		http.NotFound(w, r)
-		return
-	}
-
-	result, err := s.svc.Get(r.Context(), target, s.cfg.CacheFreshness)
-	if err != nil &&
-		!errors.Is(err, resolve.ErrNotFound) &&
-		!errors.Is(err, resolve.ErrAmbiguous) {
-		if sched, _, lerr := s.store.Latest(target.Key()); lerr == nil {
-			result = schedule.Result{Schedule: sched, Source: schedule.SourceCache}
-			err = nil
-		}
-	}
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadGateway)
-		return
-	}
-
-	body := ics.RenderSchedule(result.Schedule, ics.Options{
-		Anchor: time.Now().In(krskLocation),
-		Loc:    krskLocation,
-	})
-	w.Header().Set("Content-Type", "text/calendar; charset=utf-8")
-	w.Header().Set("Cache-Control", "public, max-age=3600")
-	_, _ = w.Write(body)
 }
 
 // handleAPISchedule отдаёт расписание target'а в JSON. Тот же source-of-truth,

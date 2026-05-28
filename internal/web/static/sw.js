@@ -50,8 +50,6 @@ self.addEventListener('fetch', (event) => {
   // Не кэшируем «динамику», где устаревший ответ хуже отсутствия:
   if (
     url.pathname.startsWith('/api/') ||
-    url.pathname.startsWith('/calendar/') ||
-    url.pathname.startsWith('/ics/') ||
     url.pathname === '/healthz'
   ) {
     return;

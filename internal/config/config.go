@@ -19,8 +19,6 @@ package config
 
 import (
 	"bufio"
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -52,12 +50,6 @@ type Config struct {
 	CacheFreshness time.Duration // как долго версия в кэше считается свежей (для web-сервера)
 	WebListenAddr  string        // адрес и порт прослушивания web-сервера (напр. ":8080")
 	Path           string        // откуда загружен конфиг (для сообщений)
-	// ICSSecret — HMAC-ключ для подписи токенов webcal-подписок. Если в
-	// config.txt не задан ics_secret — генерируется случайно при старте;
-	// в этом случае токены инвалидируются при каждом перезапуске процесса
-	// (приемлемо для small-scale деплоя; для production стабильности —
-	// прописать ics_secret в config.txt).
-	ICSSecret []byte
 	// WatchInterval — как часто фоновый воркер обновляет «горячие» target'ы
 	// в watch.json. Дефолт 60 минут. Жёстко лимитируется снизу 5 минутами —
 	// чтобы случайно не задосить my.sibsutis.ru.
@@ -117,11 +109,6 @@ func Load(explicitPath string) (*Config, error) {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 
-	cfg.ICSSecret, err = parseICSSecret(values["ics_secret"])
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", path, err)
-	}
-
 	cfg.WatchInterval, err = parseMinutes(values["watch_interval_minutes"], DefaultWatchInterval, MinWatchInterval)
 	if err != nil {
 		return nil, fmt.Errorf("%s: watch_interval_minutes: %w", path, err)
@@ -155,37 +142,6 @@ func parseMinutes(s string, def, min time.Duration) (time.Duration, error) {
 		return 0, fmt.Errorf("должно быть не меньше %s (получено %s)", min, d)
 	}
 	return d, nil
-}
-
-// parseICSSecret разбирает ics_secret из конфига. Допустимые форматы:
-// - пустая строка / не задано → генерируется 32 случайных байта и в stderr
-//   печатается предупреждение (токены подписок инвалидируются при рестарте);
-// - hex-строка (64 символа `[0-9a-fA-F]`) — декодируется как 32 байта;
-// - любая другая непустая строка — берётся как байты «как есть» (≥16 байт
-//   для базовой защиты от подбора).
-func parseICSSecret(raw string) ([]byte, error) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		secret := make([]byte, 32)
-		if _, err := rand.Read(secret); err != nil {
-			return nil, fmt.Errorf("ics_secret: не удалось сгенерировать случайные байты: %w", err)
-		}
-		fmt.Fprintln(os.Stderr,
-			"предупреждение: ics_secret не задан в config.txt — сгенерирован случайно. "+
-				"Подписные webcal-URL'ы будут инвалидироваться при каждом перезапуске сервера. "+
-				"Чтобы зафиксировать, добавь в config.txt строку:\n"+
-				"  ics_secret="+hex.EncodeToString(secret))
-		return secret, nil
-	}
-	if len(raw) == 64 {
-		if b, err := hex.DecodeString(raw); err == nil {
-			return b, nil
-		}
-	}
-	if len(raw) < 16 {
-		return nil, fmt.Errorf("ics_secret слишком короткий (минимум 16 символов или 64-символьная hex-строка)")
-	}
-	return []byte(raw), nil
 }
 
 // parseFreshness разбирает cache_freshness_minutes (целое число минут).
