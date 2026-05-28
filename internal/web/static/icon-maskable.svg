@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Расписание СибГУТИ">
+  <!-- maskable: фон растягивается на весь холст 512×512, потому что
+       Android вырежет любую форму (круг/squircle/teardrop). Контент
+       помещён внутрь safe-zone (диаметр ~410, 80% от 512) — он не
+       подрежется даже на самой агрессивной круглой маске. -->
+  <rect width="512" height="512" fill="#6750a4"/>
+  <!-- Лист календаря — масштабирован так, чтобы помещаться в круге R=205. -->
+  <rect x="160" y="192" width="192" height="184" rx="22" fill="#ffffff"/>
+  <rect x="160" y="192" width="192" height="44" rx="22" fill="#4f378b"/>
+  <rect x="200" y="172" width="20" height="48" rx="8" fill="#21005d"/>
+  <rect x="292" y="172" width="20" height="48" rx="8" fill="#21005d"/>
+  <rect x="188" y="260" width="136" height="16" rx="5" fill="#cac4d0"/>
+  <rect x="188" y="296" width="108" height="16" rx="5" fill="#cac4d0"/>
+  <rect x="188" y="332" width="136" height="16" rx="5" fill="#cac4d0"/>
+</svg>

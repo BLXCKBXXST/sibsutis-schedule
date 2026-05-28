@@ -1,12 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="sibsutis-schedule">
-  <rect width="512" height="512" rx="96" fill="#2563eb"/>
-  <!-- Силуэт настольного календаря: лист с двумя «зубчиками» сверху. -->
-  <rect x="96" y="128" width="320" height="320" rx="32" fill="#ffffff"/>
-  <rect x="96" y="128" width="320" height="72" rx="32" fill="#1e40af"/>
-  <rect x="160" y="96" width="32" height="80" rx="12" fill="#1e293b"/>
-  <rect x="320" y="96" width="32" height="80" rx="12" fill="#1e293b"/>
-  <!-- Три «строки» внутри листа, имитирующие пары. -->
-  <rect x="144" y="240" width="224" height="24" rx="8" fill="#cbd5e1"/>
-  <rect x="144" y="296" width="184" height="24" rx="8" fill="#cbd5e1"/>
-  <rect x="144" y="352" width="224" height="24" rx="8" fill="#cbd5e1"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Расписание SibSUTI">
+  <!-- Круглый фон: на круглых launcher'ах вписывается без зазора,
+       на квадратных смотрится как иконка с тёмно-фиолетовым кружком. -->
+  <circle cx="256" cy="256" r="256" fill="#6750a4"/>
+  <!-- Лист календаря — внутри круга, с запасом до края, чтобы не подрезался. -->
+  <rect x="128" y="160" width="256" height="240" rx="28" fill="#ffffff"/>
+  <rect x="128" y="160" width="256" height="56" rx="28" fill="#4f378b"/>
+  <!-- «Зубчики» крепления листа. -->
+  <rect x="184" y="136" width="24" height="64" rx="10" fill="#21005d"/>
+  <rect x="304" y="136" width="24" height="64" rx="10" fill="#21005d"/>
+  <!-- Три полоски-«пары». -->
+  <rect x="168" y="252" width="176" height="20" rx="6" fill="#cac4d0"/>
+  <rect x="168" y="296" width="144" height="20" rx="6" fill="#cac4d0"/>
+  <rect x="168" y="340" width="176" height="20" rx="6" fill="#cac4d0"/>
 </svg>
