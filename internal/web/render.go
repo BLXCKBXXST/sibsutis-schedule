@@ -79,6 +79,23 @@ func newRenderer() (*renderer, error) {
 			}
 			return ""
 		},
+		// dayDate возвращает календарную дату дня (wi, di) — берёт
+		// понедельник недели wi из WeekStarts и добавляет di дней.
+		// Используется в schedule.html, чтобы под weekday'ом подписать
+		// «26 мая».
+		"dayDate": func(starts [2]time.Time, wi, di int) time.Time {
+			if wi < 0 || wi >= len(starts) || starts[wi].IsZero() {
+				return time.Time{}
+			}
+			return starts[wi].AddDate(0, 0, di)
+		},
+		// formatDayDate — «26 мая» с русским месяцем в род. падеже.
+		"formatDayDate": func(t time.Time) string {
+			if t.IsZero() {
+				return ""
+			}
+			return fmt.Sprintf("%d %s", t.Day(), russianMonthGen(t.Month()))
+		},
 		// changeDate возвращает ближайшую (от now) календарную дату, на
 		// которую попадает изменение из diff — «26 мая». Используется на
 		// странице diff и заменяет жаргон «числитель/знаменатель».

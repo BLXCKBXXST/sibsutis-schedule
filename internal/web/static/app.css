@@ -255,6 +255,7 @@ h4 { margin: 1rem 0 0.25rem; }
 
 .week + .week { margin-top: 1.5rem; }
 .day { margin: 0.5rem 0 1.5rem; }
+.day h4 .day-date { color: var(--muted); font-weight: 400; }
 
 .lessons {
   width: 100%;

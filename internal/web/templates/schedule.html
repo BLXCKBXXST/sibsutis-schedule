@@ -53,7 +53,7 @@
       {{range $di, $d := $w.Days}}
         {{ $isToday := and $today.Found (eq $wi $today.WeekIdx) (eq $di $today.DayIdx) }}
         <article class="day" id="d-{{$wi}}-{{$di}}"{{if $isToday}} data-today="{{if $today.IsExactDay}}exact{{else}}upcoming{{end}}"{{end}}>
-          <h4>📅 {{$d.Weekday}}</h4>
+          <h4>{{$d.Weekday}}<small class="day-date">, {{formatDayDate (dayDate $.WeekStarts $wi $di)}}</small></h4>
           {{if $d.Lessons}}
             <table class="lessons">
               <thead>
