@@ -173,11 +173,15 @@ func (w *Worker) maybeNotify(ctx context.Context, t model.Target, prev, next mod
 // formatChanges собирает короткое уведомление для Telegram. Без markdown —
 // чтобы не возиться с экранированием. Группируем по типу изменения, чтобы
 // читалось как пункты «отменили / добавили / перенесли».
+//
+// «Когда» выводится конкретной датой («Пн 26 мая») вместо жаргонного
+// «числитель, Понедельник» — пользователь не обязан знать терминологию.
 func formatChanges(t model.Target, changes []diff.Change) string {
+	now := time.Now()
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "Расписание «%s» изменилось:\n\n", t.Label())
 	for _, c := range changes {
-		when := fmt.Sprintf("%s, %s", c.WeekName, c.Weekday)
+		when := formatChangeWhen(c, now)
 		switch c.Kind {
 		case diff.KindAdded:
 			fmt.Fprintf(&sb, "+ %s: %s в %s, ауд. %s\n", when, c.New.Subject, c.New.TimeFrom, c.New.Room)
@@ -198,6 +202,52 @@ func formatChanges(t model.Target, changes []diff.Change) string {
 		}
 	}
 	return sb.String()
+}
+
+// formatChangeWhen — «Пн 26 мая» по конкретной ближайшей дате. Если
+// ничего не нашлось (на случай экзотических данных) — фолбэк на день
+// недели из самого Change.
+func formatChangeWhen(c diff.Change, from time.Time) string {
+	d := model.NextDateFor(c.WeekIdx, c.DayIdx, from)
+	if d.IsZero() {
+		return c.Weekday
+	}
+	return fmt.Sprintf("%s %d %s", shortWeekday(d), d.Day(), monthGen(d.Month()))
+}
+
+func shortWeekday(t time.Time) string {
+	names := [...]string{"Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"}
+	return names[t.Weekday()]
+}
+
+func monthGen(m time.Month) string {
+	switch m {
+	case time.January:
+		return "января"
+	case time.February:
+		return "февраля"
+	case time.March:
+		return "марта"
+	case time.April:
+		return "апреля"
+	case time.May:
+		return "мая"
+	case time.June:
+		return "июня"
+	case time.July:
+		return "июля"
+	case time.August:
+		return "августа"
+	case time.September:
+		return "сентября"
+	case time.October:
+		return "октября"
+	case time.November:
+		return "ноября"
+	case time.December:
+		return "декабря"
+	}
+	return ""
 }
 
 // AsTouchHook возвращает Hook, который веб-сервер дёргает при каждом

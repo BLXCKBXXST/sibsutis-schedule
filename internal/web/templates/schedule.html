@@ -40,7 +40,6 @@
   {{range $wi, $w := $s.Weeks}}
     {{if or (eq $.ShowWeek -1) (eq $.ShowWeek $wi)}}
     <section class="week"{{if and $today.Found (eq $wi $today.WeekIdx)}} data-active-week="true"{{end}}>
-      <h3>{{ $w.Name | capitalize }}</h3>
       <nav class="day-tabs" aria-label="Дни недели">
         {{range $di, $d := $w.Days}}
           {{ $isToday := and $today.Found (eq $wi $today.WeekIdx) (eq $di $today.DayIdx) }}

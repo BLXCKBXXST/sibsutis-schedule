@@ -55,3 +55,31 @@ func mondayOf(t time.Time) time.Time {
 	shift := wd - 1 // Mon=0, Tue=1, ..., Sun=6
 	return time.Date(t.Year(), t.Month(), t.Day()-shift, 0, 0, 0, 0, t.Location())
 }
+
+// NextDateFor возвращает ближайшую дату (день, без времени) ≥ from, у
+// которой WeekParity == wi и weekdayIndex == di. wi: 0=числитель, 1=знаменатель;
+// di: 0=Понедельник..6=Воскресенье. Используется для подстановки конкретной
+// календарной даты в diff-страницу и Telegram-уведомления — чтобы пользователю
+// не приходилось знать жаргон «числитель/знаменатель».
+//
+// Перебор гарантированно сходится за ≤14 итераций (двухнедельный цикл).
+func NextDateFor(wi, di int, from time.Time) time.Time {
+	day := time.Date(from.Year(), from.Month(), from.Day(), 0, 0, 0, 0, from.Location())
+	for off := 0; off < 14; off++ {
+		d := day.AddDate(0, 0, off)
+		if WeekParity(d, time.Time{}) == wi && weekdayOf(d) == di {
+			return d
+		}
+	}
+	return time.Time{}
+}
+
+// weekdayOf — индекс дня недели (0=Пн..6=Вс). Дублирует web.weekdayIndex,
+// но нужен в model, чтобы NextDateFor не зависел от web-пакета.
+func weekdayOf(t time.Time) int {
+	wd := int(t.Weekday())
+	if wd == 0 {
+		return 6
+	}
+	return wd - 1
+}

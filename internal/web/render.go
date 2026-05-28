@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/BLXCKBXXST/sibsutis-schedule/internal/diff"
 	"github.com/BLXCKBXXST/sibsutis-schedule/internal/model"
 )
 
@@ -77,6 +78,16 @@ func newRenderer() (*renderer, error) {
 				return "is-next"
 			}
 			return ""
+		},
+		// changeDate возвращает ближайшую (от now) календарную дату, на
+		// которую попадает изменение из diff — «26 мая». Используется на
+		// странице diff и заменяет жаргон «числитель/знаменатель».
+		"changeDate": func(c diff.Change) string {
+			d := model.NextDateFor(c.WeekIdx, c.DayIdx, time.Now())
+			if d.IsZero() {
+				return ""
+			}
+			return fmt.Sprintf("%d %s", d.Day(), russianMonthGen(d.Month()))
 		},
 		// weekRange форматирует семидневный диапазон с понедельника
 		// start в виде «25–31 мая» или «28 мая – 3 июня».

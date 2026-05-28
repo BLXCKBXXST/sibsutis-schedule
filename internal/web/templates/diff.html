@@ -24,7 +24,7 @@
       <ul class="diff-list">
         {{range .Changes}}
           <li>
-            <strong>{{.Weekday}}, {{.WeekName}}</strong> —
+            <strong>{{.Weekday}}, {{changeDate .}}</strong> —
             {{if eq .Kind "added"}}
               {{.New.Subject}} ({{.New.TimeFrom}}–{{.New.TimeTo}}, {{.New.Room}})
             {{else if eq .Kind "removed"}}
