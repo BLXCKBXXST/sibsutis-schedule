@@ -1,7 +1,7 @@
 {{define "content"}}
 {{ $s := .Schedule }}
 {{ $type := .Target.Type }}
-{{ $today := .Today }}
+{{ $base := printf "/schedule/%s/%s" (urlType $type) .Target.Query }}
 
 <header class="schedule-header">
   <h2>{{.Target.Label}}{{with $s.Title}} <small>({{.}})</small>{{end}}</h2>
@@ -27,68 +27,78 @@
 {{if $s.IsEmpty}}
   <p class="muted">Пар не найдено.</p>
 {{else}}
-  <nav class="week-tabs" aria-label="Выбор недели">
-    {{range $.WeekOrder}}
-      {{ $wi := . }}
-      <a class="week-tab{{if eq $.ShowWeek $wi}} is-active{{end}}{{if eq $wi $.CurrentWeek}} is-current{{end}}"
-         href="?week={{$wi}}">
-        {{weekRange (index $.WeekStarts $wi)}}{{if eq $wi $.CurrentWeek}} · сейчас{{end}}
-      </a>
-    {{end}}
-    <a class="week-tab{{if eq $.ShowWeek -1}} is-active{{end}}" href="?week=all">Обе</a>
+  <nav class="view-tabs" aria-label="Вид расписания">
+    <a class="view-tab{{if eq .View "day"}} is-active{{end}}" href="{{$base}}?view=day">День</a>
+    <a class="view-tab{{if eq .View "week"}} is-active{{end}}" href="{{$base}}?view=week">Неделя</a>
+    <a class="view-tab{{if eq .View "pick"}} is-active{{end}}" href="{{$base}}?view=pick">Выбрать день</a>
   </nav>
-  {{range $wi, $w := $s.Weeks}}
-    {{if or (eq $.ShowWeek -1) (eq $.ShowWeek $wi)}}
-    <section class="week"{{if and $today.Found (eq $wi $today.WeekIdx)}} data-active-week="true"{{end}}>
-      <nav class="day-tabs" aria-label="Дни недели">
-        {{range $di, $d := $w.Days}}
-          {{ $isToday := and $today.Found (eq $wi $today.WeekIdx) (eq $di $today.DayIdx) }}
-          {{ $hasLessons := gt (len $d.Lessons) 0 }}
-          <a href="#d-{{$wi}}-{{$di}}"
-             class="day-tab{{if $isToday}} is-today{{end}}{{if not $hasLessons}} is-empty{{end}}">
-            {{slice $d.Weekday 0 2}}
-          </a>
-        {{end}}
-      </nav>
-      {{range $di, $d := $w.Days}}
-        {{ $isToday := and $today.Found (eq $wi $today.WeekIdx) (eq $di $today.DayIdx) }}
-        <article class="day" id="d-{{$wi}}-{{$di}}"{{if $isToday}} data-today="{{if $today.IsExactDay}}exact{{else}}upcoming{{end}}"{{end}}>
-          <h4>{{$d.Weekday}}<small class="day-date">, {{formatDayDate (dayDate $.WeekStarts $wi $di)}}</small></h4>
-          {{if $d.Lessons}}
-            <table class="lessons">
-              <thead>
-                <tr>
-                  <th>№</th>
-                  <th>Время</th>
-                  <th>Пара</th>
-                  <th>Тип</th>
-                  <th>Преподаватель</th>
-                  <th>Аудитория</th>
-                  <th>{{if isStudent $type}}Подгр.{{else}}Группы{{end}}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {{range $li, $l := $d.Lessons}}
-                {{ $cls := lessonClass $.NowSlot $.NextSlot $wi $di $l.TimeFrom }}
-                <tr{{if $cls}} class="{{$cls}}"{{end}}>
-                  <td data-label="№">{{if gt $l.Number 0}}{{$l.Number}}{{end}}</td>
-                  <td data-label="Время"><b>{{timeRange $l}}</b></td>
-                  <td data-label="Пара">{{$l.Subject}}</td>
-                  <td data-label="Тип"><i>{{$l.Type}}</i></td>
-                  <td data-label="Преподаватель">{{join ", " $l.Teachers}}</td>
-                  <td data-label="Аудитория">{{$l.Room}}</td>
-                  <td data-label="{{if isStudent $type}}Подгруппа{{else}}Группы{{end}}">{{if isStudent $type}}{{$l.Subgroup}}{{else}}{{join ", " $l.Groups}}{{end}}</td>
-                </tr>
-                {{end}}
-              </tbody>
-            </table>
-          {{else}}
-            <p class="muted">— нет занятий</p>
+
+  {{if eq .View "pick"}}
+    <section class="mini-calendar" aria-label="Календарь месяца">
+      <header class="mini-calendar-head">
+        <a class="mini-nav" href="{{.PrevMonthURL}}" aria-label="Предыдущий месяц">←</a>
+        <span class="mini-month">{{.MonthLabel}}</span>
+        <a class="mini-nav" href="{{.NextMonthURL}}" aria-label="Следующий месяц">→</a>
+      </header>
+      <div class="mini-grid">
+        <span class="mini-dow">пн</span><span class="mini-dow">вт</span><span class="mini-dow">ср</span>
+        <span class="mini-dow">чт</span><span class="mini-dow">пт</span><span class="mini-dow">сб</span>
+        <span class="mini-dow">вс</span>
+        {{range .MonthGrid}}
+          {{range .}}
+            {{if .InMonth}}
+              <a class="mini-cell{{if .IsToday}} is-today{{end}}{{if .IsSelected}} is-selected{{end}}{{if .HasLessons}} has-lessons{{end}}"
+                 href="{{$base}}?view=pick&day={{.Date.Format "2006-01-02"}}">{{.Day}}</a>
+            {{else}}
+              <span class="mini-cell is-out">{{.Day}}</span>
+            {{end}}
           {{end}}
-        </article>
-      {{end}}
+        {{end}}
+      </div>
     </section>
-    {{end}}
+  {{end}}
+
+  {{if not .RenderDays}}
+    <p class="muted">— в выбранный период занятий нет</p>
+  {{end}}
+
+  {{range .RenderDays}}
+    <article class="day"{{if .IsToday}} data-today="{{if .IsExactDay}}exact{{else}}upcoming{{end}}"{{end}}>
+      <h4>{{.Day.Weekday}}<small class="day-date">, {{formatDayDate .Date}}</small></h4>
+      {{if .Day.Lessons}}
+        <table class="lessons">
+          <thead>
+            <tr>
+              <th>№</th>
+              <th>Время</th>
+              <th>Пара</th>
+              <th>Тип</th>
+              <th>Преподаватель</th>
+              <th>Аудитория</th>
+              <th>{{if isStudent $type}}Подгр.{{else}}Группы{{end}}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{ $wi := .WeekIdx }}
+            {{ $di := .DayIdx }}
+            {{range $li, $l := .Day.Lessons}}
+            {{ $cls := lessonClass $.NowSlot $.NextSlot $wi $di $l.TimeFrom }}
+            <tr{{if $cls}} class="{{$cls}}"{{end}}>
+              <td data-label="№">{{if gt $l.Number 0}}{{$l.Number}}{{end}}</td>
+              <td data-label="Время"><b>{{timeRange $l}}</b></td>
+              <td data-label="Пара">{{$l.Subject}}</td>
+              <td data-label="Тип"><i>{{$l.Type}}</i></td>
+              <td data-label="Преподаватель">{{join ", " $l.Teachers}}</td>
+              <td data-label="Аудитория">{{$l.Room}}</td>
+              <td data-label="{{if isStudent $type}}Подгруппа{{else}}Группы{{end}}">{{if isStudent $type}}{{$l.Subgroup}}{{else}}{{join ", " $l.Groups}}{{end}}</td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      {{else}}
+        <p class="muted">— нет занятий</p>
+      {{end}}
+    </article>
   {{end}}
 {{end}}
 

@@ -42,25 +42,52 @@ type scheduleData struct {
 	NowSlot      *slotRef  // слот, идущий прямо сейчас (или nil)
 	NextSlot     *slotRef  // следующий слот по расписанию (или nil)
 	NextLessonAt time.Time // точное начало NextSlot (для live-таймера)
-	ServerNow    time.Time  // момент рендера в зоне Asia/Krasnoyarsk
-	// ShowWeek управляет тем, какие недели рендерить:
-	//   0/1   — только числитель/знаменатель,
-	//   -1    — обе подряд (старый layout).
-	// По умолчанию (URL без ?week=) подставляется активная неделя из Today.
-	ShowWeek int
+	ServerNow time.Time // момент рендера в зоне Asia/Krasnoyarsk
+	// View — выбранный режим отображения:
+	//   "day"  — два ближайших учебных дня (сегодня + следующий),
+	//   "week" — одна неделя целиком,
+	//   "pick" — конкретный выбранный день + мини-календарь месяца.
+	View string
+	// RenderDays — дни, которые шаблон рендерит карточками. В day-режиме
+	// 1-2 дня; в week-режиме — до 7; в pick-режиме — ровно 1.
+	RenderDays []dayRef
 	// WeekStarts[wi] — понедельник ближайшей календарной недели,
-	// соответствующей Weeks[wi]. Используется для рендера дат в табах.
+	// соответствующей Weeks[wi]. Используется в dayDate и т.п.
 	WeekStarts [2]time.Time
-	// WeekOrder — порядок отображения недель в табах: первой идёт
-	// текущая неделя, второй — следующая.
-	WeekOrder [2]int
-	// CurrentWeek — индекс текущей по календарю недели (нужен шаблону,
-	// чтобы пометить таб «сегодня» независимо от выбранной ShowWeek).
-	CurrentWeek int
+	// SelectedDay — выбранный день в pick/week-режиме (или сегодня).
+	SelectedDay time.Time
+	// MonthLabel и MonthGrid — данные для мини-календаря в pick-режиме.
+	// MonthGrid — 6 рядов по 7 ячеек (понедельник…воскресенье).
+	MonthLabel   string
+	MonthGrid    [][]calCell
+	PrevMonthURL string
+	NextMonthURL string
 	// TelegramSubscribeURL — ссылка на бота с deep-link'ом, добавляющая
 	// текущий target в подписки. Пусто — Telegram-бот не настроен,
 	// кнопка скрыта.
 	TelegramSubscribeURL string
+}
+
+// dayRef — день расписания, который шаблон рендерит как карточку.
+// Поле Day — копия Day из Schedule.Weeks (а не указатель), чтобы шаблон
+// не зависел от индексов и пар.
+type dayRef struct {
+	WeekIdx    int
+	DayIdx     int
+	Date       time.Time
+	Day        model.Day
+	IsToday    bool // совпадает с сегодняшней календарной датой
+	IsExactDay bool // совпадает с todayHint.IsExactDay
+}
+
+// calCell — одна ячейка мини-календаря в pick-режиме.
+type calCell struct {
+	Date       time.Time
+	Day        int  // число месяца (1..31)
+	InMonth    bool // ячейка относится к отображаемому месяцу
+	HasLessons bool // в этот день есть хотя бы одна пара
+	IsToday    bool
+	IsSelected bool
 }
 
 // ambiguousData — данные для страницы «уточни запрос».
@@ -293,15 +320,30 @@ func (s *Server) handleSchedule(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().In(krskLocation)
 	hl := highlights(result.Schedule, now)
 	today := computeTodayHint(result.Schedule, now)
-	showWeek := parseShowWeek(r.URL.Query().Get("week"), today)
-	starts, calendarParity := weekStarts(now)
-	// «Сейчас» в табах = неделя ближайшего учебного дня. На выходных это
-	// будущая неделя (понедельник через 1-2 дня), не уходящая ISO-неделя.
-	current := calendarParity
-	if today.Found {
-		current = today.WeekIdx
+
+	view := parseView(r.URL.Query().Get("view"))
+	selected := parseDayParam(r.URL.Query().Get("day"), now)
+	starts := weekStartsAround(selected)
+
+	renderDays := pickRenderDays(result.Schedule, view, selected, today, now)
+
+	var monthLabel, prevMonthURL, nextMonthURL string
+	var grid [][]calCell
+	if view == "pick" {
+		month := parseMonthParam(r.URL.Query().Get("month"), selected)
+		grid = buildMonthGrid(result.Schedule, month, selected, now)
+		monthLabel = fmt.Sprintf("%s %d", russianMonthNom(month.Month()), month.Year())
+		prev := month.AddDate(0, -1, 0)
+		next := month.AddDate(0, 1, 0)
+		base := "/schedule/" + targetTypeToURL(target.Type) + "/" + url.PathEscape(target.Query)
+		prevMonthURL = base + "?view=pick&month=" + prev.Format("2006-01")
+		nextMonthURL = base + "?view=pick&month=" + next.Format("2006-01")
+		if !selected.IsZero() {
+			prevMonthURL += "&day=" + selected.Format("2006-01-02")
+			nextMonthURL += "&day=" + selected.Format("2006-01-02")
+		}
 	}
-	order := [2]int{current, 1 - current}
+
 	var tgURL string
 	if s.tgBotUsername != "" {
 		tgURL = "https://t.me/" + s.tgBotUsername + "?start=" + notify.EncodeStartToken(target)
@@ -321,46 +363,222 @@ func (s *Server) handleSchedule(w http.ResponseWriter, r *http.Request) {
 		NextSlot:             hl.Next,
 		NextLessonAt:         hl.NextAt,
 		ServerNow:            now,
-		ShowWeek:             showWeek,
+		View:                 view,
+		RenderDays:           renderDays,
 		WeekStarts:           starts,
-		WeekOrder:            order,
-		CurrentWeek:          current,
+		SelectedDay:          selected,
+		MonthLabel:           monthLabel,
+		MonthGrid:            grid,
+		PrevMonthURL:         prevMonthURL,
+		NextMonthURL:         nextMonthURL,
 		TelegramSubscribeURL: tgURL,
 	})
 }
 
-// weekStarts возвращает понедельники двух ближайших календарных недель и
-// индекс той, что соответствует «сейчас». starts[wi] — понедельник недели
-// чётности wi; current — wi сегодняшней недели (0=числитель, 1=знаменатель).
-func weekStarts(now time.Time) (starts [2]time.Time, current int) {
-	now = now.In(krskLocation)
-	thisMon := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, krskLocation)
+// parseView разбирает ?view=… c фолбэком на "day".
+func parseView(raw string) string {
+	switch raw {
+	case "week", "pick":
+		return raw
+	}
+	return "day"
+}
+
+// parseDayParam разбирает ?day=YYYY-MM-DD в дату 00:00 KRSK. Невалидный
+// или пустой формат → сегодня.
+func parseDayParam(raw string, now time.Time) time.Time {
+	if raw != "" {
+		if t, err := time.ParseInLocation("2006-01-02", raw, krskLocation); err == nil {
+			return t
+		}
+	}
+	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, krskLocation)
+}
+
+// parseMonthParam разбирает ?month=YYYY-MM, дефолт — месяц selected.
+func parseMonthParam(raw string, selected time.Time) time.Time {
+	if raw != "" {
+		if t, err := time.ParseInLocation("2006-01", raw, krskLocation); err == nil {
+			return t
+		}
+	}
+	return time.Date(selected.Year(), selected.Month(), 1, 0, 0, 0, 0, krskLocation)
+}
+
+// weekStartsAround — понедельники двух соседних недель относительно date,
+// положенные по индексу WeekParity. starts[parity(date)] = пн его недели,
+// starts[1-parity] = пн следующей.
+func weekStartsAround(date time.Time) [2]time.Time {
+	date = date.In(krskLocation)
+	thisMon := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, krskLocation)
 	wd := int(thisMon.Weekday())
 	if wd == 0 {
 		wd = 7
 	}
 	thisMon = thisMon.AddDate(0, 0, -(wd - 1))
-	current = model.WeekParity(thisMon, time.Time{})
-	starts[current] = thisMon
-	starts[1-current] = thisMon.AddDate(0, 0, 7)
-	return starts, current
+	parity := model.WeekParity(thisMon, time.Time{})
+	var starts [2]time.Time
+	starts[parity] = thisMon
+	starts[1-parity] = thisMon.AddDate(0, 0, 7)
+	return starts
 }
 
-// parseShowWeek разбирает ?week=. Пустое или невалидное значение → активная
-// неделя из today (или -1, если сегодня не покрыто).
-func parseShowWeek(raw string, today todayHint) int {
-	switch raw {
-	case "0":
-		return 0
-	case "1":
-		return 1
-	case "all":
-		return -1
+// pickRenderDays строит список dayRef в зависимости от выбранного view.
+//   - "day"  → два ближайших учебных дня от now (или selected, если он будущий).
+//   - "week" → 7 дней недели, в которой лежит selected (даже пустые).
+//   - "pick" → ровно один день selected (даже если пар нет).
+func pickRenderDays(s model.Schedule, view string, selected time.Time, today todayHint, now time.Time) []dayRef {
+	if len(s.Weeks) < 2 {
+		return nil
 	}
-	if today.Found {
-		return today.WeekIdx
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, krskLocation)
+
+	switch view {
+	case "week":
+		mon := mondayOfDate(selected)
+		out := make([]dayRef, 0, 7)
+		for i := 0; i < 7; i++ {
+			d := mon.AddDate(0, 0, i)
+			wi := model.WeekParity(d, time.Time{})
+			di := weekdayIndex(d)
+			if wi >= len(s.Weeks) || di >= len(s.Weeks[wi].Days) {
+				continue
+			}
+			out = append(out, makeDayRef(s, wi, di, d, todayStart, today))
+		}
+		return out
+	case "pick":
+		wi := model.WeekParity(selected, time.Time{})
+		di := weekdayIndex(selected)
+		if wi >= len(s.Weeks) || di >= len(s.Weeks[wi].Days) {
+			return nil
+		}
+		return []dayRef{makeDayRef(s, wi, di, selected, todayStart, today)}
 	}
-	return -1
+
+	// "day": два ближайших учебных дня от сегодня.
+	out := make([]dayRef, 0, 2)
+	for off := 0; off < 14 && len(out) < 2; off++ {
+		d := todayStart.AddDate(0, 0, off)
+		wi := model.WeekParity(d, time.Time{})
+		di := weekdayIndex(d)
+		if wi >= len(s.Weeks) || di >= len(s.Weeks[wi].Days) {
+			continue
+		}
+		if len(s.Weeks[wi].Days[di].Lessons) == 0 {
+			continue
+		}
+		out = append(out, makeDayRef(s, wi, di, d, todayStart, today))
+	}
+	return out
+}
+
+func makeDayRef(s model.Schedule, wi, di int, date, todayStart time.Time, today todayHint) dayRef {
+	isToday := date.Equal(todayStart)
+	isExact := isToday && today.Found && today.IsExactDay
+	return dayRef{
+		WeekIdx:    wi,
+		DayIdx:     di,
+		Date:       date,
+		Day:        s.Weeks[wi].Days[di],
+		IsToday:    isToday,
+		IsExactDay: isExact,
+	}
+}
+
+func mondayOfDate(t time.Time) time.Time {
+	t = t.In(krskLocation)
+	wd := int(t.Weekday())
+	if wd == 0 {
+		wd = 7
+	}
+	return time.Date(t.Year(), t.Month(), t.Day()-(wd-1), 0, 0, 0, 0, krskLocation)
+}
+
+// buildMonthGrid строит сетку 6×7 для мини-календаря отображаемого месяца.
+// Первая колонка — понедельник. Пустые недели в конце месяца обрезаются,
+// чтобы не плодить лишние строки (фактически рядов 4-6).
+func buildMonthGrid(s model.Schedule, month, selected, now time.Time) [][]calCell {
+	first := time.Date(month.Year(), month.Month(), 1, 0, 0, 0, 0, krskLocation)
+	wd := int(first.Weekday())
+	if wd == 0 {
+		wd = 7
+	}
+	gridStart := first.AddDate(0, 0, -(wd - 1))
+	todayDate := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, krskLocation)
+	selDate := time.Date(selected.Year(), selected.Month(), selected.Day(), 0, 0, 0, 0, krskLocation)
+
+	var rows [][]calCell
+	for r := 0; r < 6; r++ {
+		row := make([]calCell, 7)
+		anyInMonth := false
+		for c := 0; c < 7; c++ {
+			d := gridStart.AddDate(0, 0, r*7+c)
+			inMonth := d.Month() == month.Month()
+			row[c] = calCell{
+				Date:       d,
+				Day:        d.Day(),
+				InMonth:    inMonth,
+				HasLessons: dayHasLessons(s, d),
+				IsToday:    d.Equal(todayDate),
+				IsSelected: d.Equal(selDate),
+			}
+			if inMonth {
+				anyInMonth = true
+			}
+		}
+		rows = append(rows, row)
+		if r >= 3 && !anyInMonth {
+			rows = rows[:len(rows)-1]
+			break
+		}
+	}
+	return rows
+}
+
+func dayHasLessons(s model.Schedule, d time.Time) bool {
+	if len(s.Weeks) < 2 {
+		return false
+	}
+	wi := model.WeekParity(d, time.Time{})
+	di := weekdayIndex(d)
+	if wi >= len(s.Weeks) || di >= len(s.Weeks[wi].Days) {
+		return false
+	}
+	return len(s.Weeks[wi].Days[di].Lessons) > 0
+}
+
+// russianMonthNom — название месяца в именительном падеже («Май»).
+// В genitive у нас уже есть russianMonthGen (для дат «26 мая»); здесь
+// нужен заголовок мини-календаря.
+func russianMonthNom(m time.Month) string {
+	switch m {
+	case time.January:
+		return "Январь"
+	case time.February:
+		return "Февраль"
+	case time.March:
+		return "Март"
+	case time.April:
+		return "Апрель"
+	case time.May:
+		return "Май"
+	case time.June:
+		return "Июнь"
+	case time.July:
+		return "Июль"
+	case time.August:
+		return "Август"
+	case time.September:
+		return "Сентябрь"
+	case time.October:
+		return "Октябрь"
+	case time.November:
+		return "Ноябрь"
+	case time.December:
+		return "Декабрь"
+	}
+	return ""
 }
 
 // handleServiceWorker отдаёт static/sw.js под корневым путём /sw.js,

@@ -165,6 +165,42 @@ func TestHighlightsCoversSubgroupsInSameSlot(t *testing.T) {
 	}
 }
 
+func TestPickRenderDays(t *testing.T) {
+	s := todayTestSchedule() // вт числителя: 2 пары; ср знаменателя: 1 пара
+	loc := krskLocation
+
+	// view=day от понедельника 25.05.2026 (числитель, пуст в фикстуре) →
+	// должен взять вт 26.05 (есть пары) + ср 03.06 знаменателя (есть пары).
+	now := time.Date(2026, 5, 25, 9, 0, 0, 0, loc)
+	hint := computeTodayHint(s, now)
+	rd := pickRenderDays(s, "day", now, hint, now)
+	if len(rd) != 2 {
+		t.Fatalf("view=day: ожидалось 2 дня, получено %d (%+v)", len(rd), rd)
+	}
+	if rd[0].Date.Day() != 26 || rd[0].Date.Month() != time.May {
+		t.Errorf("первый день не 26.05: %v", rd[0].Date)
+	}
+	if rd[1].Date.Day() != 3 || rd[1].Date.Month() != time.June {
+		t.Errorf("второй день не 03.06: %v", rd[1].Date)
+	}
+
+	// view=pick на конкретный день — ровно один dayRef.
+	picked := time.Date(2026, 6, 3, 0, 0, 0, 0, loc)
+	rd = pickRenderDays(s, "pick", picked, hint, now)
+	if len(rd) != 1 {
+		t.Fatalf("view=pick: ожидался 1 день, получено %d", len(rd))
+	}
+	if rd[0].Date.Day() != 3 || rd[0].Date.Month() != time.June {
+		t.Errorf("pick day != 03.06: %v", rd[0].Date)
+	}
+
+	// view=week — 7 дней недели, в которой лежит выбранный день.
+	rd = pickRenderDays(s, "week", now, hint, now)
+	if len(rd) != 7 {
+		t.Errorf("view=week: ожидалось 7 дней, получено %d", len(rd))
+	}
+}
+
 func TestWeekdayIndex(t *testing.T) {
 	monday := time.Date(2026, 5, 25, 0, 0, 0, 0, time.UTC)
 	if got := weekdayIndex(monday); got != 0 {

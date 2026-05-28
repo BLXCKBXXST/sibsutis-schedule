@@ -30,19 +30,32 @@ func (s *stubFetcher) Fetch(_ context.Context, t model.Target) (model.Schedule, 
 		return model.Schedule{}, s.err
 	}
 	if s.sched.Target.Type == "" {
-		// дефолтное расписание
+		// дефолтное расписание: одна пара в Пн числителя; знаменатель пуст.
+		mk7days := func(monday model.Day) []model.Day {
+			return []model.Day{
+				monday,
+				{Weekday: "Вторник"},
+				{Weekday: "Среда"},
+				{Weekday: "Четверг"},
+				{Weekday: "Пятница"},
+				{Weekday: "Суббота"},
+				{Weekday: "Воскресенье"},
+			}
+		}
 		return model.Schedule{
 			Target:    t,
 			Title:     t.Query,
 			FetchedAt: time.Date(2026, 5, 15, 9, 0, 0, 0, time.UTC),
 			Weeks: []model.Week{
-				{Name: "числитель", Days: []model.Day{
-					{Weekday: "Понедельник", Lessons: []model.Lesson{
+				{Name: "числитель", Days: mk7days(model.Day{
+					Weekday: "Понедельник",
+					Lessons: []model.Lesson{
 						{Number: 1, TimeFrom: "08:00", TimeTo: "09:35",
 							Subject: "Физика", Type: "Лекция",
 							Teachers: []string{"Иванов И.И."}, Room: "а.101"},
-					}},
-				}},
+					},
+				})},
+				{Name: "знаменатель", Days: mk7days(model.Day{Weekday: "Понедельник"})},
 			},
 		}, nil
 	}
@@ -521,15 +534,24 @@ func TestNetworkErrorFallsBackToCache(t *testing.T) {
 	srv := newTestServer(t, &stubFetcher{err: errors.New("боже сайт лёг")}, nil)
 	// положим в store кэш для target
 	target := model.Target{Type: model.TypeStudent, Query: "ИКС-531"}
+	mk7 := func(monday model.Day) []model.Day {
+		return []model.Day{
+			monday,
+			{Weekday: "Вторник"}, {Weekday: "Среда"}, {Weekday: "Четверг"},
+			{Weekday: "Пятница"}, {Weekday: "Суббота"}, {Weekday: "Воскресенье"},
+		}
+	}
 	cached := model.Schedule{
 		Target:    target,
 		FetchedAt: time.Now().Add(-2 * time.Hour),
 		Weeks: []model.Week{
-			{Name: "числитель", Days: []model.Day{
-				{Weekday: "Понедельник", Lessons: []model.Lesson{
+			{Name: "числитель", Days: mk7(model.Day{
+				Weekday: "Понедельник",
+				Lessons: []model.Lesson{
 					{Number: 1, TimeFrom: "08:00", TimeTo: "09:35", Subject: "СтараяВерсия"},
-				}},
-			}},
+				},
+			})},
+			{Name: "знаменатель", Days: mk7(model.Day{Weekday: "Понедельник"})},
 		},
 	}
 	if _, _, err := srv.store.Save(target.Key(), cached); err != nil {
