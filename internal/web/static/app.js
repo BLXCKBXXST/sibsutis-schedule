@@ -117,11 +117,48 @@
     navigator.serviceWorker.register('/sw.js').catch(function () {});
   }
 
+  // Переключатель темы: 3 положения (auto/light/dark), сохраняется в
+  // localStorage. data-theme на <html> уже мог быть выставлен inline-
+  // скриптом до загрузки CSS; здесь только обновляем aria-pressed и
+  // обрабатываем клики.
+  function wireThemeSwitch() {
+    var bar = document.querySelector('.theme-switch');
+    if (!bar) return;
+    function current() {
+      try {
+        var t = localStorage.getItem('theme');
+        if (t === 'light' || t === 'dark') return t;
+      } catch (e) {}
+      return 'auto';
+    }
+    function apply(t) {
+      document.documentElement.setAttribute('data-theme', t);
+      try {
+        if (t === 'auto') localStorage.removeItem('theme');
+        else localStorage.setItem('theme', t);
+      } catch (e) {}
+      mark(t);
+    }
+    function mark(t) {
+      var btns = bar.querySelectorAll('button[data-theme-set]');
+      btns.forEach(function (b) {
+        b.setAttribute('aria-pressed', b.dataset.themeSet === t ? 'true' : 'false');
+      });
+    }
+    bar.addEventListener('click', function (e) {
+      var btn = e.target.closest('button[data-theme-set]');
+      if (!btn) return;
+      apply(btn.dataset.themeSet);
+    });
+    mark(current());
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
     tickTimer();
     setInterval(tickTimer, 30000);
     scrollToToday();
     wireSearchAutocomplete();
+    wireThemeSwitch();
     registerSW();
   });
 })();

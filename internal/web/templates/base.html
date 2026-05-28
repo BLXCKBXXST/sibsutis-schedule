@@ -1,10 +1,21 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="ru" data-theme="auto">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#2563eb">
+  <meta name="theme-color" content="#6750a4">
   <title>{{.Title}}</title>
+  <!-- Применяем тему ДО загрузки CSS, чтобы не было вспышки светлой/тёмной. -->
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("theme");
+        if (t === "light" || t === "dark") {
+          document.documentElement.setAttribute("data-theme", t);
+        }
+      } catch (e) {}
+    })();
+  </script>
   <link rel="stylesheet" href="/static/app.css">
   <link rel="manifest" href="/static/manifest.json">
   <link rel="icon" type="image/svg+xml" href="/static/icon.svg">
@@ -17,6 +28,11 @@
       <img src="/static/icon.svg" alt="" width="24" height="24" class="brand-icon">
       <strong>Расписание SibSUTI</strong>
     </a>
+    <div class="theme-switch" role="group" aria-label="Тема оформления">
+      <button type="button" data-theme-set="auto"  aria-pressed="false" title="Как в системе">Авто</button>
+      <button type="button" data-theme-set="light" aria-pressed="false" title="Светлая">Светлая</button>
+      <button type="button" data-theme-set="dark"  aria-pressed="false" title="Тёмная">Тёмная</button>
+    </div>
   </header>
   <main class="container">
     {{template "content" .}}
