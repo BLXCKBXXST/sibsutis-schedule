@@ -1,29 +1,40 @@
 {{define "content"}}
 {{with .Notice}}<p class="notice">{{.}}</p>{{end}}
 
-{{with .DefaultTarget}}
-  <p>
-    <a class="cta" href="/schedule/{{urlType .Type}}/{{.Query}}">
-      📅 Моё расписание ({{.Label}})
-    </a>
-  </p>
+{{if .MyTarget}}
+  <section class="my-card">
+    <p class="my-card-label">★ Моё расписание</p>
+    <h2 class="my-card-name">{{.MyTarget.Label}}</h2>
+    <p class="my-card-actions">
+      <a class="cta" href="/schedule/{{urlType .MyTarget.Type}}/{{.MyTarget.Query}}">Открыть</a>
+      <form method="post" action="/forget" class="inline-form">
+        <button type="submit" class="link-button">Открепить</button>
+      </form>
+    </p>
+  </section>
+{{else}}
+  <section class="my-card my-card-empty">
+    <h2>Сделай это место своим</h2>
+    <p class="muted">Найди свою группу, преподавателя или аудиторию ниже —
+      и на странице расписания нажми «★ Сделать моим». Тогда главная всегда
+      будет открываться на нужном тебе расписании.</p>
+  </section>
 {{end}}
 
-{{with .MyTarget}}
-  <p class="my-target">
-    <a class="cta cta-secondary" href="/schedule/{{urlType .Type}}/{{.Query}}">
-      ↩ Открыть последнее ({{.Label}})
-    </a>
-    <form method="post" action="/forget" class="forget-form">
-      <button type="submit" class="link-button" aria-label="Забыть последний выбор">забыть</button>
-    </form>
-  </p>
+{{with .DefaultTarget}}
+  {{if not $.MyTarget}}
+    <p>
+      <a class="cta cta-secondary" href="/schedule/{{urlType .Type}}/{{.Query}}">
+        Расписание сервера: {{.Label}}
+      </a>
+    </p>
+  {{end}}
 {{end}}
 
 <section class="search">
   <h2>Найти расписание</h2>
   <form method="post" action="/search">
-    <fieldset>
+    <fieldset class="search-type">
       <legend>Что искать</legend>
       <label><input type="radio" name="type" value="group" checked> группу</label>
       <label><input type="radio" name="type" value="teacher"> преподавателя</label>

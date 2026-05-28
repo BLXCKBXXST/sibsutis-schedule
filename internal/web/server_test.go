@@ -115,7 +115,7 @@ func TestHomeRenders(t *testing.T) {
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
-	checks := []string{"Расписание SibSUTI", "Найти расписание", "ИКС-531", "Моё расписание"}
+	checks := []string{"Расписание SibSUTI", "Найти расписание", "Сделай это место своим"}
 	for _, c := range checks {
 		if !strings.Contains(string(body), c) {
 			t.Errorf("в / нет %q", c)
@@ -249,7 +249,10 @@ func TestSuggestUnknownType(t *testing.T) {
 	}
 }
 
-func TestScheduleSetsMyTargetCookie(t *testing.T) {
+func TestScheduleDoesNotAutoSetCookie(t *testing.T) {
+	// Регрессия: cookie my_target теперь ставится только явной кнопкой,
+	// автозапись при просмотре была раздражающей (зашёл на чужую группу
+	// → перезатёрло своё).
 	srv := newTestServer(t, &stubFetcher{}, nil)
 	ts := httptest.NewServer(srv.Routes())
 	defer ts.Close()
@@ -259,8 +262,31 @@ func TestScheduleSetsMyTargetCookie(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		t.Fatalf("status = %d", resp.StatusCode)
+	for _, c := range resp.Cookies() {
+		if c.Name == "my_target" {
+			t.Errorf("cookie my_target не должен ставиться при просмотре, нашлось: %q", c.Value)
+		}
+	}
+}
+
+func TestMyTargetSaveSetsCookie(t *testing.T) {
+	srv := newTestServer(t, &stubFetcher{}, nil)
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+	ts := httptest.NewServer(srv.Routes())
+	defer ts.Close()
+
+	form := url.Values{}
+	form.Set("type", "group")
+	form.Set("q", "ИКС-531")
+	resp, err := client.PostForm(ts.URL+"/my-target/save", form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303", resp.StatusCode)
 	}
 	var got *http.Cookie
 	for _, c := range resp.Cookies() {
@@ -274,11 +300,8 @@ func TestScheduleSetsMyTargetCookie(t *testing.T) {
 	if !strings.HasPrefix(got.Value, "group/") {
 		t.Errorf("cookie value = %q, ожидался префикс 'group/'", got.Value)
 	}
-	if got.HttpOnly != true {
+	if !got.HttpOnly {
 		t.Errorf("cookie должен быть HttpOnly")
-	}
-	if got.SameSite != http.SameSiteLaxMode {
-		t.Errorf("SameSite = %v, want Lax", got.SameSite)
 	}
 }
 
@@ -326,8 +349,8 @@ func TestHomeShowsMyTargetFromCookie(t *testing.T) {
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
-	if !strings.Contains(string(body), "Открыть последнее") {
-		t.Errorf("на главной нет ссылки «Открыть последнее»: %s", body)
+	if !strings.Contains(string(body), "Моё расписание") {
+		t.Errorf("на главной нет блока «Моё расписание»: %s", body)
 	}
 	if !strings.Contains(string(body), "Иванов И.И.") {
 		t.Errorf("на главной нет ФИО из cookie: %s", body)

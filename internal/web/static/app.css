@@ -124,6 +124,34 @@ h4 { margin: 1rem 0 0.25rem; }
   flex-wrap: wrap;
 }
 .forget-form { margin: 0; }
+
+.my-card {
+  margin: 1rem 0 1.5rem;
+  padding: 1rem 1.25rem;
+  border-radius: 12px;
+  background: var(--now-bg);
+  border-left: 4px solid var(--now-bar);
+}
+.my-card-empty {
+  background: var(--row-alt);
+  border-left-color: var(--border);
+}
+.my-card-label {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--now-bar);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.my-card-name { margin: 0.2rem 0 0.6rem; font-size: 1.4rem; }
+.my-card-actions {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
 .link-button {
   background: none;
   border: none;
@@ -136,14 +164,35 @@ h4 { margin: 1rem 0 0.25rem; }
 .link-button:hover { color: var(--fg); }
 
 .search { margin-top: 2rem; }
-.search fieldset {
+.search fieldset.search-type {
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 0.6rem 1rem;
+  border-radius: 12px;
+  padding: 0.55rem 0.85rem 0.65rem;
   margin: 0 0 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
 }
-.search legend { font-size: 0.9rem; color: var(--muted); padding: 0 0.25rem; }
-.search label { margin-right: 1rem; }
+.search fieldset.search-type legend {
+  font-size: 0.85rem;
+  color: var(--muted);
+  padding: 0 0.25rem;
+}
+.search fieldset.search-type label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  background: var(--row-alt);
+  margin: 0;
+  white-space: nowrap;
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+.search fieldset.search-type label:hover { background: var(--border); }
+.search fieldset.search-type input[type="radio"] { margin: 0; }
 .search .row { display: flex; gap: 0.5rem; }
 .search input[type="text"] {
   flex: 1;
@@ -180,8 +229,15 @@ h4 { margin: 1rem 0 0.25rem; }
 }
 .now-strip #next-timer { font-weight: 600; }
 
-.schedule-actions { margin-top: 0.5rem; }
-.action {
+.schedule-actions {
+  margin-top: 0.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+.action,
+button.action {
   display: inline-block;
   padding: 0.35rem 0.8rem;
   border: 1px solid var(--border);
@@ -189,8 +245,22 @@ h4 { margin: 1rem 0 0.25rem; }
   background: var(--row);
   color: var(--accent);
   font-size: 0.9rem;
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
 }
-.action:hover { background: var(--row-alt); text-decoration: none; }
+.action:hover,
+button.action:hover { background: var(--row-alt); text-decoration: none; }
+.inline-form { display: inline; margin: 0; }
+.my-badge {
+  display: inline-block;
+  padding: 0.35rem 0.8rem;
+  border-radius: 6px;
+  background: var(--now-bg);
+  color: var(--now-bar);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
 
 /* Переключатель видов «День / Неделя / Выбрать день». */
 .view-tabs {

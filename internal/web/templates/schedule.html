@@ -15,13 +15,27 @@
       Следующая пара начнётся через <span id="next-timer">…</span>
     </aside>
   {{end}}
-  {{if .TelegramSubscribeURL}}
-    <p class="schedule-actions">
+  <p class="schedule-actions">
+    {{if .IsMyTarget}}
+      <span class="my-badge">★ Моё расписание</span>
+      <form method="post" action="/forget" class="inline-form">
+        <input type="hidden" name="next" value="{{$base}}">
+        <button type="submit" class="link-button">Открепить</button>
+      </form>
+    {{else}}
+      <form method="post" action="/my-target/save" class="inline-form">
+        <input type="hidden" name="type" value="{{urlType $type}}">
+        <input type="hidden" name="q" value="{{.Target.Query}}">
+        <input type="hidden" name="next" value="{{$base}}">
+        <button type="submit" class="action">★ Сделать моим расписанием</button>
+      </form>
+    {{end}}
+    {{if .TelegramSubscribeURL}}
       <a class="action" href="{{.TelegramSubscribeURL}}" title="Бот напишет, если у этого расписания что-то изменится">
         Уведомления в Telegram
       </a>
-    </p>
-  {{end}}
+    {{end}}
+  </p>
 </header>
 
 {{if $s.IsEmpty}}

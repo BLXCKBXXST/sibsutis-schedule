@@ -66,6 +66,10 @@ type scheduleData struct {
 	// текущий target в подписки. Пусто — Telegram-бот не настроен,
 	// кнопка скрыта.
 	TelegramSubscribeURL string
+	// IsMyTarget — true, если cookie my_target указывает ровно на этот
+	// target. Используется шаблоном, чтобы вместо кнопки «Сделать моим»
+	// показать значок «★ Моё расписание» с кнопкой «Открепить».
+	IsMyTarget bool
 }
 
 // dayRef — день расписания, который шаблон рендерит как карточку.
@@ -313,10 +317,6 @@ func (s *Server) handleSchedule(w http.ResponseWriter, r *http.Request) {
 		cacheReason = "из кэша"
 	}
 
-	// Запомнили выбор пользователя — главная теперь покажет ссылку
-	// «Моё расписание (запомнено)».
-	writeMyTargetCookie(w, r, target)
-
 	now := time.Now().In(krskLocation)
 	hl := highlights(result.Schedule, now)
 	today := computeTodayHint(result.Schedule, now)
@@ -348,6 +348,9 @@ func (s *Server) handleSchedule(w http.ResponseWriter, r *http.Request) {
 	if s.tgBotUsername != "" {
 		tgURL = "https://t.me/" + s.tgBotUsername + "?start=" + notify.EncodeStartToken(target)
 	}
+	myTarget := readMyTargetCookie(r, s.cfg.DefaultTarget)
+	isMine := myTarget != nil && myTarget.Type == target.Type &&
+		strings.EqualFold(myTarget.Query, target.Query)
 	if s.onTouch != nil {
 		s.onTouch(target)
 	}
@@ -372,6 +375,7 @@ func (s *Server) handleSchedule(w http.ResponseWriter, r *http.Request) {
 		PrevMonthURL:         prevMonthURL,
 		NextMonthURL:         nextMonthURL,
 		TelegramSubscribeURL: tgURL,
+		IsMyTarget:           isMine,
 	})
 }
 
@@ -911,7 +915,35 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 // чтобы случайные ссылки/префетчи не сбрасывали выбор.
 func (s *Server) handleForget(w http.ResponseWriter, r *http.Request) {
 	clearMyTargetCookie(w, r)
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	dest := r.FormValue("next")
+	if dest == "" || !strings.HasPrefix(dest, "/") {
+		dest = "/"
+	}
+	http.Redirect(w, r, dest, http.StatusSeeOther)
+}
+
+// handleMyTargetSave явно записывает выбранный target в cookie my_target.
+// Только POST: cookie меняется лишь по осознанному клику пользователя, а
+// не автоматически при просмотре чужого расписания.
+// Параметры формы: type=group|teacher|room, q=<query>, next=<URL для 303>.
+func (s *Server) handleMyTargetSave(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad form", http.StatusBadRequest)
+		return
+	}
+	typ := r.FormValue("type")
+	q := strings.TrimSpace(r.FormValue("q"))
+	tt, ok := urlTypeToTargetType(typ)
+	if !ok || q == "" {
+		http.Error(w, "bad target", http.StatusBadRequest)
+		return
+	}
+	writeMyTargetCookie(w, r, model.Target{Type: tt, Query: q})
+	dest := r.FormValue("next")
+	if dest == "" || !strings.HasPrefix(dest, "/") {
+		dest = "/schedule/" + typ + "/" + url.PathEscape(q)
+	}
+	http.Redirect(w, r, dest, http.StatusSeeOther)
 }
 
 // handleSuggest отдаёт JSON-список вариантов для автокомплита поиска.

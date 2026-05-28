@@ -65,6 +65,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /history/{type}/{q}", s.handleHistory)
 	mux.HandleFunc("GET /history/{type}/{q}/{span}", s.handleDiff)
 	mux.HandleFunc("POST /forget", s.handleForget)
+	mux.HandleFunc("POST /my-target/save", s.handleMyTargetSave)
 	mux.HandleFunc("GET /api/suggest", s.handleSuggest)
 	mux.HandleFunc("GET /api/schedule/{type}/{q}", s.handleAPISchedule)
 	mux.HandleFunc("GET /api/history/{type}/{q}", s.handleAPIHistory)
