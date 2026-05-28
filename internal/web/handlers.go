@@ -168,7 +168,7 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 	// просто запрещаем shared-кэш.
 	w.Header().Set("Cache-Control", "private, max-age=60")
 	s.render.render(w, http.StatusOK, "home", homeData{
-		Title:         "Расписание SibSUTI",
+		Title:         "Расписание СибГУТИ",
 		Notice:        notice,
 		DefaultTarget: s.cfg.DefaultTarget,
 		MyTarget:      readMyTargetCookie(r, s.cfg.DefaultTarget),

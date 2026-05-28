@@ -115,7 +115,7 @@ func TestHomeRenders(t *testing.T) {
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
-	checks := []string{"Расписание SibSUTI", "Найти расписание", "Сделай это место своим"}
+	checks := []string{"Расписание СибГУТИ", "Найти расписание", "Сделай это место своим"}
 	for _, c := range checks {
 		if !strings.Contains(string(body), c) {
 			t.Errorf("в / нет %q", c)
